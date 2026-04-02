@@ -1,5 +1,12 @@
 # astromesh-leia
 
+[![Validate Plugin](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml)
+[![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
+[![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.1.0)
+[![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet.svg)](https://claude.com/claude-code)
+
 A Claude Code plugin that provides a natural-language interface for creating, deploying, and managing AI agents on astromesh-nexus clusters. Named after Leia, a lemon beagle, this plugin takes you from business idea to deployed WhatsApp agent in minutes -- no Kubernetes expertise required.
 
 ## Architecture
@@ -38,11 +45,32 @@ graph LR
     NOD --> LLM
 ```
 
+## Install
+
+```bash
+# Clone and install
+git clone https://github.com/monaccode/astromesh-leia.git
+claude plugins add ./astromesh-leia
+
+# Or install from a release
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.1.0.tar.gz | tar xz
+claude plugins add ./astromesh-leia
+```
+
 ## Quick Start
 
 ```bash
-git clone https://github.com/monaccode/astromesh-leia.git
-claude plugins add ./astromesh-leia
+# 1. Bootstrap a local nexus cluster
+/leia bootstrap local
+
+# 2. Create your first WhatsApp agent
+/leia I need a customer support bot for my coffee shop
+
+# 3. Check status
+/leia status
+
+# 4. Test it
+/leia test coffee-support
 ```
 
 ## Command Reference

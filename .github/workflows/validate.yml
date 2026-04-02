@@ -1,0 +1,191 @@
+name: Validate Plugin
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-structure:
+    name: Validate Plugin Structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate plugin.json
+        run: |
+          echo "Checking plugin.json exists and is valid JSON..."
+          python3 -c "
+          import json, sys
+          with open('.claude-plugin/plugin.json') as f:
+              data = json.load(f)
+          required = ['name', 'version', 'description', 'author', 'license']
+          missing = [k for k in required if k not in data]
+          if missing:
+              print(f'Missing required fields: {missing}')
+              sys.exit(1)
+          print(f'Plugin: {data[\"name\"]} v{data[\"version\"]}')
+          print('plugin.json is valid')
+          "
+
+      - name: Validate command frontmatter
+        run: |
+          echo "Checking all commands have valid YAML frontmatter..."
+          errors=0
+          for f in commands/*.md; do
+            if ! head -1 "$f" | grep -q "^---$"; then
+              echo "ERROR: $f missing frontmatter delimiter"
+              errors=$((errors + 1))
+            fi
+            if ! grep -q "^description:" "$f"; then
+              echo "ERROR: $f missing description field"
+              errors=$((errors + 1))
+            fi
+          done
+          echo "Checked $(ls commands/*.md | wc -l) commands"
+          if [ $errors -gt 0 ]; then
+            echo "Found $errors errors"
+            exit 1
+          fi
+          echo "All commands valid"
+
+      - name: Validate agent frontmatter
+        run: |
+          echo "Checking all agents have valid frontmatter..."
+          errors=0
+          for f in agents/*.md; do
+            if ! head -1 "$f" | grep -q "^---$"; then
+              echo "ERROR: $f missing frontmatter delimiter"
+              errors=$((errors + 1))
+            fi
+            for field in name description tools model; do
+              if ! grep -q "^${field}:" "$f"; then
+                echo "ERROR: $f missing $field field"
+                errors=$((errors + 1))
+              fi
+            done
+          done
+          echo "Checked $(ls agents/*.md | wc -l) agents"
+          if [ $errors -gt 0 ]; then
+            echo "Found $errors errors"
+            exit 1
+          fi
+          echo "All agents valid"
+
+      - name: Validate YAML templates
+        run: |
+          echo "Checking all templates are valid YAML..."
+          python3 -c "
+          import yaml, glob, sys
+          errors = 0
+          for f in sorted(glob.glob('templates/*.yaml')):
+              try:
+                  with open(f) as fh:
+                      data = yaml.safe_load(fh)
+                  if data.get('apiVersion') != 'astromesh/v1':
+                      print(f'ERROR: {f} wrong apiVersion: {data.get(\"apiVersion\")}')
+                      errors += 1
+                  if data.get('kind') != 'Agent':
+                      print(f'ERROR: {f} wrong kind: {data.get(\"kind\")}')
+                      errors += 1
+                  if not data.get('metadata', {}).get('name'):
+                      print(f'ERROR: {f} missing metadata.name')
+                      errors += 1
+                  print(f'  {f}: {data[\"metadata\"][\"name\"]} - OK')
+              except Exception as e:
+                  print(f'ERROR: {f} invalid YAML: {e}')
+                  errors += 1
+          print(f'Checked {len(glob.glob(\"templates/*.yaml\"))} templates')
+          if errors:
+              sys.exit(1)
+          print('All templates valid')
+          "
+
+      - name: Validate file completeness
+        run: |
+          echo "Checking expected files exist..."
+          errors=0
+          expected_commands="leia create deploy status logs test templates config bootstrap teardown"
+          for cmd in $expected_commands; do
+            if [ ! -f "commands/${cmd}.md" ]; then
+              echo "ERROR: missing commands/${cmd}.md"
+              errors=$((errors + 1))
+            fi
+          done
+
+          expected_agents="leia-interpreter leia-architect leia-operator leia-tester leia-doctor"
+          for agent in $expected_agents; do
+            if [ ! -f "agents/${agent}.md" ]; then
+              echo "ERROR: missing agents/${agent}.md"
+              errors=$((errors + 1))
+            fi
+          done
+
+          expected_schemas="astromesh-v1-agent nexus-api whatsapp-config orchestration-patterns"
+          for schema in $expected_schemas; do
+            if [ ! -f "schemas/${schema}.md" ]; then
+              echo "ERROR: missing schemas/${schema}.md"
+              errors=$((errors + 1))
+            fi
+          done
+
+          for f in .claude-plugin/plugin.json README.md LICENSE CHANGELOG.md; do
+            if [ ! -f "$f" ]; then
+              echo "ERROR: missing $f"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            echo "Found $errors missing files"
+            exit 1
+          fi
+          echo "All expected files present"
+
+  validate-docs:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check documentation files exist
+        run: |
+          expected_docs="architecture commands-reference agents-guide templates-guide configuration whatsapp-setup troubleshooting"
+          errors=0
+          for doc in $expected_docs; do
+            if [ ! -f "docs/${doc}.md" ]; then
+              echo "ERROR: missing docs/${doc}.md"
+              errors=$((errors + 1))
+            fi
+          done
+
+          expected_tutorials="first-agent business-templates multi-tenant advanced-patterns"
+          for tut in $expected_tutorials; do
+            if [ ! -f "docs/tutorials/${tut}.md" ]; then
+              echo "ERROR: missing docs/tutorials/${tut}.md"
+              errors=$((errors + 1))
+            fi
+          done
+
+          if [ $errors -gt 0 ]; then
+            exit 1
+          fi
+          echo "All documentation files present"
+
+      - name: Check for broken internal links
+        run: |
+          echo "Checking for broken internal markdown links..."
+          errors=0
+          for f in $(find docs -name "*.md") README.md; do
+            # Extract relative links like [text](path.md) or [text](../path.md)
+            links=$(grep -oP '\]\((?!http)(?!#)([^)]+\.md)\)' "$f" 2>/dev/null | sed 's/\](\(.*\))/\1/' || true)
+            dir=$(dirname "$f")
+            for link in $links; do
+              resolved="$dir/$link"
+              if [ ! -f "$resolved" ]; then
+                echo "WARNING: $f references $link (resolved: $resolved) - not found"
+              fi
+            done
+          done
+          echo "Link check complete"

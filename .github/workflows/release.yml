@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate plugin before release
+        run: |
+          python3 -c "
+          import json
+          with open('.claude-plugin/plugin.json') as f:
+              data = json.load(f)
+          tag = '${GITHUB_REF_NAME}'.lstrip('v')
+          if data['version'] != tag:
+              print(f'ERROR: plugin.json version ({data[\"version\"]}) does not match tag ({tag})')
+              exit(1)
+          print(f'Version match: {data[\"version\"]}')
+          "
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the section for this version from CHANGELOG.md
+          awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > /tmp/release-notes.md
+          if [ ! -s /tmp/release-notes.md ]; then
+            echo "No changelog entry found for ${VERSION}, using default"
+            echo "Release ${GITHUB_REF_NAME}" > /tmp/release-notes.md
+          fi
+          cat /tmp/release-notes.md
+
+      - name: Create release archive
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          # Create a clean archive without .git
+          mkdir -p dist
+          tar --exclude='.git' --exclude='dist' -czf "dist/astromesh-leia-${VERSION}.tar.gz" .
+          zip -r "dist/astromesh-leia-${VERSION}.zip" . -x '.git/*' 'dist/*'
+          echo "Created archives:"
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release-notes.md
+          files: |
+            dist/astromesh-leia-*.tar.gz
+            dist/astromesh-leia-*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
