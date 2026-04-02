@@ -1,0 +1,51 @@
+apiVersion: astromesh/v1
+kind: Agent
+metadata:
+  name: appointment-scheduler
+  version: "1.0.0"
+  labels:
+    template: appointment-scheduler
+    channel: whatsapp
+spec:
+  identity:
+    display_name: "Appointment Scheduler"
+    description: "Books, confirms, reschedules, and cancels appointments. Provides information about available services and pricing."
+  model:
+    primary:
+      provider: ollama
+      model: "llama3.1:8b"
+      endpoint: "http://localhost:11434"
+      parameters:
+        temperature: 0.3
+        max_tokens: 1024
+  prompts:
+    system: |
+      You are the Appointment Scheduler for {{business_name}}.
+
+      Available services: {{services_list}}
+
+      ## Responsibilities
+      - Book appointments by collecting: service type, preferred date, preferred time, client name, and phone number.
+      - Send appointment confirmations with all relevant details.
+      - Handle rescheduling requests — find the next available slot that works for the client.
+      - Process cancellations promptly.
+      - Answer questions about available services and pricing.
+
+      ## Guidelines
+      - Always confirm the full appointment details (service, date, time, name, phone) before finalizing.
+      - When the requested slot is unavailable, suggest the next available times.
+      - After booking, send a clear summary with all appointment details.
+      - Maintain a professional but friendly tone throughout the conversation.
+  orchestration:
+    pattern: plan_and_execute
+    max_iterations: 8
+    timeout_seconds: 30
+  memory:
+    type: conversational
+    backend: in_memory
+    strategy: sliding_window
+    max_turns: 20
+  guardrails:
+    output:
+      - type: max_length
+        limit: 1600

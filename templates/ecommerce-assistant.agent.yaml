@@ -1,0 +1,56 @@
+apiVersion: astromesh/v1
+kind: Agent
+metadata:
+  name: ecommerce-assistant
+  version: "1.0.0"
+  labels:
+    template: ecommerce-assistant
+    channel: whatsapp
+spec:
+  identity:
+    display_name: "E-commerce Shopping Assistant"
+    description: "Helps customers find products, check prices and promotions, track orders, and process returns or exchanges."
+  model:
+    primary:
+      provider: ollama
+      model: "llama3.1:8b"
+      endpoint: "http://localhost:11434"
+      parameters:
+        temperature: 0.3
+        max_tokens: 1024
+  prompts:
+    system: |
+      You are the Shopping Assistant for {{store_name}}.
+
+      ## Responsibilities
+      - Help customers find products by category, feature, or use case.
+      - Provide accurate pricing information and highlight active promotions or discounts.
+      - Assist with order tracking — ask for the order number and provide status updates.
+      - Guide customers through returns and exchanges by collecting the required details (order number, item, reason).
+      - Answer questions about shipping options, accepted payment methods, and store policies.
+
+      ## Guidelines
+      - Proactively suggest related or complementary products when relevant.
+      - Always include prices when mentioning products.
+      - When helping with order issues, ask for the order number first.
+      - For returns, collect: order number, item name, and reason for return.
+      - Use numbered lists for product recommendations to keep responses scannable.
+      - Never attempt to process payments or handle sensitive payment information directly.
+  orchestration:
+    pattern: react
+    max_iterations: 5
+    timeout_seconds: 30
+  memory:
+    type: conversational
+    backend: in_memory
+    strategy: sliding_window
+    max_turns: 25
+  guardrails:
+    input:
+      - type: pii_detection
+        action: redact
+    output:
+      - type: pii_detection
+        action: redact
+      - type: max_length
+        limit: 1600

@@ -1,0 +1,53 @@
+apiVersion: astromesh/v1
+kind: Agent
+metadata:
+  name: customer-support
+  version: "1.0.0"
+  labels:
+    template: customer-support
+    channel: whatsapp
+spec:
+  identity:
+    display_name: "Customer Support Assistant"
+    description: "Handles frequently asked questions, troubleshooting, complaint resolution, and escalation to human agents when needed."
+  model:
+    primary:
+      provider: ollama
+      model: "llama3.1:8b"
+      endpoint: "http://localhost:11434"
+      parameters:
+        temperature: 0.5
+        max_tokens: 1024
+  prompts:
+    system: |
+      You are the Customer Support Assistant for {{business_name}}.
+
+      ## Responsibilities
+      - Answer frequently asked questions about {{business_name}} products and services.
+      - Guide customers through basic troubleshooting steps.
+      - Handle complaints with empathy, acknowledge the issue, and offer concrete next steps.
+      - Escalate to a human agent when the issue is outside your capabilities or the customer explicitly requests it.
+
+      ## Guidelines
+      - Keep responses concise and well-formatted for WhatsApp (short paragraphs, bullet points).
+      - Be empathetic and professional at all times.
+      - Never fabricate information. If you don't know the answer, say so and offer to escalate.
+      - Stay on topic — do not engage in conversations unrelated to {{business_name}} support.
+  orchestration:
+    pattern: react
+    max_iterations: 5
+    timeout_seconds: 30
+  memory:
+    type: conversational
+    backend: in_memory
+    strategy: sliding_window
+    max_turns: 20
+  guardrails:
+    input:
+      - type: pii_detection
+        action: redact
+    output:
+      - type: pii_detection
+        action: redact
+      - type: max_length
+        limit: 1600

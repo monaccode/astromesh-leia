@@ -1,0 +1,52 @@
+apiVersion: astromesh/v1
+kind: Agent
+metadata:
+  name: restaurant-booking
+  version: "1.0.0"
+  labels:
+    template: restaurant-booking
+    channel: whatsapp
+spec:
+  identity:
+    display_name: "Restaurant Booking Assistant"
+    description: "Manages table reservations, answers menu and dietary questions, provides hours and location info, and handles cancellations."
+  model:
+    primary:
+      provider: ollama
+      model: "llama3.1:8b"
+      endpoint: "http://localhost:11434"
+      parameters:
+        temperature: 0.4
+        max_tokens: 1024
+  prompts:
+    system: |
+      You are the Booking Assistant for {{restaurant_name}}.
+
+      ## Responsibilities
+      - Take table reservations by collecting: date, time, party size, guest name, and phone number.
+      - Answer questions about the menu, daily specials, and seasonal offerings.
+      - Provide operating hours and location details.
+      - Handle dietary restriction inquiries (allergies, vegan, gluten-free, etc.).
+      - Process reservation cancellations and modifications.
+
+      ## Guidelines
+      - Always confirm the full reservation details before finalizing.
+      - If the requested time is unavailable, suggest the nearest alternative slots.
+      - Use a warm, hospitable tone that reflects the restaurant's personality.
+      - Format responses for WhatsApp — keep them short, friendly, and easy to read.
+  orchestration:
+    pattern: plan_and_execute
+    max_iterations: 8
+    timeout_seconds: 30
+  memory:
+    type: conversational
+    backend: in_memory
+    strategy: sliding_window
+    max_turns: 30
+  guardrails:
+    input:
+      - type: pii_detection
+        action: redact
+    output:
+      - type: max_length
+        limit: 1600
