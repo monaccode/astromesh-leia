@@ -2,6 +2,8 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
+> **Version:** This reference reflects **astromesh-nexus v0.3.0**, which introduced the user auth system, tenant management, and API-key management on top of the existing agent endpoints. Custom resources (`NexusAgent`, `NexusTenant`) are served at API version `v1alpha1`.
+
 ## Base URL
 
 The Nexus API runs on the cluster. Default base URL:
@@ -18,13 +20,22 @@ http://localhost:8080
 
 ## Authentication
 
-All endpoints except `/healthz` and `/readyz` require authentication via API key.
+Nexus v0.3.0 protects routes with a **dual-auth** model (`DualAuthMiddleware`): a protected
+endpoint accepts **either** of two credentials. The `/auth/*` routes and the `/healthz` /
+`/readyz` probes require **no** authentication.
 
-| Header | Format | Description |
-|--------|--------|-------------|
-| `X-API-Key` | `nxk_<base64-string>` | Nexus API key. Generated during bootstrap or via `leia config`. |
+| Method | Header | Format | Use case |
+|--------|--------|--------|----------|
+| **API key** | `X-API-Key` | `nxk_<key>` | Programmatic / machine access. Tenant-scoped: the key resolves directly to one tenant. Created via the API-key endpoints and shown **once** at creation. |
+| **JWT Bearer** | `Authorization` | `Bearer <accessToken>` | Interactive user sessions. Issued by `/auth/login` (and `/auth/refresh`). |
 
-Unauthenticated requests receive `401 Unauthorized`.
+When authenticating with a JWT, you may add an optional `X-Tenant-ID: <tenantId>` header to scope
+the request to one of your tenants (required for tenant-scoped operations such as the agent
+endpoints). Nexus verifies that the authenticated user owns that tenant; if not it returns
+`403 Forbidden`.
+
+The middleware tries the `Authorization: Bearer` token first, then falls back to `X-API-Key`. A
+protected request with neither a valid JWT nor a valid API key receives `401 Unauthorized`.
 
 ## Error Format
 
@@ -47,7 +58,469 @@ Unauthenticated requests receive `401 Unauthorized`.
 
 ---
 
-## Endpoints
+## Authentication Endpoints
+
+These endpoints bootstrap and maintain user sessions. `/auth/*` routes require no auth; `/api/v1/me`
+accepts either credential.
+
+Access tokens are **short-lived**. When one expires, call `/auth/refresh` with the refresh token to
+obtain a new access token rather than re-prompting for the password.
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `POST` | `/auth/register` | none | Register a user. |
+| `POST` | `/auth/login` | none | Login and obtain tokens. |
+| `POST` | `/auth/refresh` | none | Exchange a refresh token for a new access token. |
+| `GET` | `/api/v1/me` | JWT or API key | Current authenticated user / tenant context. |
+
+### POST /auth/register
+
+Register a new user account.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Path** | `/auth/register` |
+| **Auth** | Not required |
+| **Content-Type** | `application/json` |
+
+**Request body:**
+```json
+{
+  "email": "alice@example.com",
+  "password": "correct-horse-battery",
+  "displayName": "Alice"
+}
+```
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `201 Created` | User created. |
+| `400 Bad Request` | Invalid body (e.g. missing fields, password too short). |
+| `409 Conflict` | Email already registered. |
+
+**Response (201):** Registration also logs the user in — it returns the same token bundle as `/auth/login`, so you can use the `accessToken` immediately without a separate login call.
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "eyJhbGciOi...",
+  "user": {
+    "id": "usr_1f2e...",
+    "email": "alice@example.com",
+    "displayName": "Alice"
+  }
+}
+```
+
+**curl example:**
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"correct-horse-battery","displayName":"Alice"}'
+```
+
+---
+
+### POST /auth/login
+
+Authenticate with email and password and receive tokens.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Path** | `/auth/login` |
+| **Auth** | Not required |
+| **Content-Type** | `application/json` |
+
+**Request body:**
+```json
+{
+  "email": "alice@example.com",
+  "password": "correct-horse-battery"
+}
+```
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Tokens issued. |
+| `400 Bad Request` | Invalid body. |
+| `401 Unauthorized` | Invalid credentials. |
+
+**Response (200):**
+```json
+{
+  "accessToken": "eyJhbGciOi...",
+  "refreshToken": "rt_9c8b...",
+  "user": {
+    "id": "usr_1f2e...",
+    "email": "alice@example.com",
+    "displayName": "Alice"
+  }
+}
+```
+
+**curl example:**
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","password":"correct-horse-battery"}'
+```
+
+---
+
+### POST /auth/refresh
+
+Exchange a valid refresh token for a fresh access token. Use this when an access token expires.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Path** | `/auth/refresh` |
+| **Auth** | Not required (the refresh token is the credential) |
+| **Content-Type** | `application/json` |
+
+**Request body:**
+```json
+{
+  "refreshToken": "rt_9c8b..."
+}
+```
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | New access token issued. |
+| `400 Bad Request` | Invalid body. |
+| `401 Unauthorized` | Invalid or expired refresh token. |
+
+**Response (200):**
+```json
+{
+  "accessToken": "eyJhbGciOi..."
+}
+```
+
+**curl example:**
+```bash
+curl -X POST http://localhost:8080/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"rt_9c8b..."}'
+```
+
+---
+
+### GET /api/v1/me
+
+Return the current authenticated user / tenant context. Works with either a JWT or an API key.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/me` |
+| **Auth** | JWT or API key |
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Caller context. |
+| `401 Unauthorized` | Missing or invalid credentials. |
+
+**Response (200):**
+```json
+{
+  "id": "usr_1f2e...",
+  "email": "alice@example.com",
+  "displayName": "Alice"
+}
+```
+
+**curl example:**
+```bash
+curl http://localhost:8080/api/v1/me \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+---
+
+## Tenant Management
+
+A **tenant** is the unit of isolation in Nexus. Creating one provisions a dedicated Kubernetes
+namespace and an astromesh-node, and all of the tenant's agents live in that namespace. A tenant's
+CR name / namespace has the form `tenant-<uuid>`. These endpoints require **JWT** auth (they act on
+behalf of the logged-in user, who becomes the tenant `owner`).
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `POST` | `/api/v1/tenants` | JWT | Create a tenant (also creates its namespace + astromesh-node). |
+| `GET` | `/api/v1/tenants` | JWT | List the caller's tenants. |
+| `DELETE` | `/api/v1/tenants/:id` | JWT | Delete a tenant and its namespace. |
+
+### POST /api/v1/tenants
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Path** | `/api/v1/tenants` |
+| **Auth** | JWT |
+| **Content-Type** | `application/json` |
+
+**Request body:**
+```json
+{
+  "displayName": "Acme Sales",
+  "nodeProfile": "standard"
+}
+```
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `201 Created` | Tenant created; namespace `tenant-<uuid>` provisioned. |
+| `400 Bad Request` | Invalid body. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+
+**Response (201):**
+```json
+{
+  "id": "t_3a4b...",
+  "crName": "tenant-3a4b...",
+  "displayName": "Acme Sales"
+}
+```
+
+**curl example:**
+```bash
+curl -X POST http://localhost:8080/api/v1/tenants \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{"displayName":"Acme Sales","nodeProfile":"standard"}'
+```
+
+---
+
+### GET /api/v1/tenants
+
+List the tenants the authenticated user belongs to.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/tenants` |
+| **Auth** | JWT |
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Array of the caller's tenants. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+
+**Response (200):**
+```json
+[
+  {
+    "id": "t_3a4b...",
+    "crName": "tenant-3a4b...",
+    "displayName": "Acme Sales"
+  }
+]
+```
+
+**curl example:**
+```bash
+curl http://localhost:8080/api/v1/tenants \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+---
+
+### DELETE /api/v1/tenants/:id
+
+Delete a tenant and its Kubernetes namespace. The caller must own the tenant.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `DELETE` |
+| **Path** | `/api/v1/tenants/:id` |
+| **Auth** | JWT |
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Tenant deleted. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+| `403 Forbidden` | Caller does not own this tenant. |
+
+**Response (200):**
+```json
+{
+  "deleted": "t_3a4b..."
+}
+```
+
+**curl example:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/tenants/t_3a4b... \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+---
+
+## API Key Management
+
+API keys are **tenant-scoped** credentials for programmatic access (the `nxk_` keys used on the
+agent endpoints). They are managed by a tenant owner over **JWT** auth. The raw key is returned
+**only once**, at creation; afterwards only metadata is retrievable, and keys are revoked by their
+hash.
+
+**Typical bootstrap flow:**
+
+1. `POST /auth/register` — create a user account.
+2. `POST /auth/login` — obtain an access token (JWT).
+3. `POST /api/v1/tenants` — create a tenant (provisions its namespace + node).
+4. `POST /api/v1/tenants/:id/keys` — mint an API key; **save the `rawKey`** (shown once).
+5. Use the `nxk_` key via `X-API-Key` for all agent operations.
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| `POST` | `/api/v1/tenants/:id/keys` | JWT | Create an API key for a tenant. |
+| `GET` | `/api/v1/tenants/:id/keys` | JWT | List a tenant's API keys (metadata only). |
+| `DELETE` | `/api/v1/tenants/:id/keys/:hash` | JWT | Revoke an API key by its hash. |
+
+### POST /api/v1/tenants/:id/keys
+
+| Property | Value |
+|----------|-------|
+| **Method** | `POST` |
+| **Path** | `/api/v1/tenants/:id/keys` |
+| **Auth** | JWT |
+| **Content-Type** | `application/json` |
+
+**Request body:**
+```json
+{
+  "label": "ci-pipeline"
+}
+```
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `201 Created` | Key created. `rawKey` is shown **once** — store it now. |
+| `400 Bad Request` | Invalid body. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+| `403 Forbidden` | Caller does not own this tenant. |
+
+**Response (201):**
+```json
+{
+  "rawKey": "nxk_abc123...",
+  "label": "ci-pipeline"
+}
+```
+
+**curl example:**
+```bash
+curl -X POST http://localhost:8080/api/v1/tenants/t_3a4b.../keys \
+  -H "Authorization: Bearer eyJhbGciOi..." \
+  -H "Content-Type: application/json" \
+  -d '{"label":"ci-pipeline"}'
+```
+
+---
+
+### GET /api/v1/tenants/:id/keys
+
+List a tenant's API keys. Returns metadata only — the raw key is never returned again.
+
+| Property | Value |
+|----------|-------|
+| **Method** | `GET` |
+| **Path** | `/api/v1/tenants/:id/keys` |
+| **Auth** | JWT |
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Array of key metadata. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+| `403 Forbidden` | Caller does not own this tenant. |
+
+**Response (200):**
+```json
+[
+  {
+    "hash": "9f86d081...",
+    "label": "ci-pipeline",
+    "createdAt": "2026-06-08T10:00:00Z"
+  }
+]
+```
+
+**curl example:**
+```bash
+curl http://localhost:8080/api/v1/tenants/t_3a4b.../keys \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+---
+
+### DELETE /api/v1/tenants/:id/keys/:hash
+
+Revoke an API key, identified by its hash (as returned by the list endpoint).
+
+| Property | Value |
+|----------|-------|
+| **Method** | `DELETE` |
+| **Path** | `/api/v1/tenants/:id/keys/:hash` |
+| **Auth** | JWT |
+
+**Response codes:**
+
+| Code | Description |
+|------|-------------|
+| `200 OK` | Key revoked. |
+| `401 Unauthorized` | Missing or invalid JWT. |
+| `403 Forbidden` | Caller does not own this tenant. |
+
+**Response (200):**
+```json
+{
+  "revoked": "9f86d081..."
+}
+```
+
+**curl example:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/tenants/t_3a4b.../keys/9f86d081... \
+  -H "Authorization: Bearer eyJhbGciOi..."
+```
+
+---
+
+## Agent Endpoints
+
+The agent endpoints are **tenant-scoped**: the target namespace is the caller's tenant namespace
+(`tenant-<uuid>`). Authenticate with either an API key (resolves to its tenant) or a JWT plus an
+`X-Tenant-ID` header.
+
+> **Agent body:** `POST` and `PUT` accept the **raw agent YAML** as the request body — set
+> `Content-Type: application/x-yaml` and send it with `--data-binary @agent.yaml`. The agent name is
+> taken from `metadata.name` in the manifest, not from the URL on create.
+>
+> **Proxied endpoints:** `/status`, `/logs`, and `/metrics` proxy to the tenant's astromesh-node and
+> may return `502 Bad Gateway` if the node is unreachable. In current builds `/logs` is a thin /
+> placeholder response.
 
 ### POST /api/v1/agents
 
@@ -57,7 +530,7 @@ Create a new agent from a YAML/JSON manifest.
 |----------|-------|
 | **Method** | `POST` |
 | **Path** | `/api/v1/agents` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 | **Content-Type** | `application/json` or `application/x-yaml` |
 
 **Request body:** Full agent manifest (see `schemas/astromesh-v1-agent.md`).
@@ -68,7 +541,7 @@ Create a new agent from a YAML/JSON manifest.
 |------|-------------|
 | `201 Created` | Agent created successfully. |
 | `400 Bad Request` | Validation errors in the manifest. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `409 Conflict` | Agent with this name already exists in the namespace. |
 
 **Response (201):**
@@ -100,7 +573,7 @@ List all agents in the cluster (filtered by namespace if the API key is namespac
 |----------|-------|
 | **Method** | `GET` |
 | **Path** | `/api/v1/agents` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Query parameters:**
 
@@ -114,7 +587,7 @@ List all agents in the cluster (filtered by namespace if the API key is namespac
 | Code | Description |
 |------|-------------|
 | `200 OK` | Array of agent summaries. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 
 **Response (200):**
 ```json
@@ -155,7 +628,7 @@ Get full details for a specific agent.
 |----------|-------|
 | **Method** | `GET` |
 | **Path** | `/api/v1/agents/:name` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Query parameters:**
 
@@ -168,7 +641,7 @@ Get full details for a specific agent.
 | Code | Description |
 |------|-------------|
 | `200 OK` | Full agent manifest and runtime status. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 
 **Response (200):**
@@ -202,7 +675,7 @@ Update an existing agent manifest. Triggers a rolling update on the node.
 |----------|-------|
 | **Method** | `PUT` |
 | **Path** | `/api/v1/agents/:name` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 | **Content-Type** | `application/json` or `application/x-yaml` |
 
 **Request body:** Full updated agent manifest.
@@ -213,7 +686,7 @@ Update an existing agent manifest. Triggers a rolling update on the node.
 |------|-------------|
 | `200 OK` | Agent updated. |
 | `400 Bad Request` | Validation errors. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 
 **Response (200):**
@@ -246,7 +719,7 @@ Delete an agent. Stops the agent on its node and removes the manifest.
 |----------|-------|
 | **Method** | `DELETE` |
 | **Path** | `/api/v1/agents/:name` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Query parameters:**
 
@@ -259,7 +732,7 @@ Delete an agent. Stops the agent on its node and removes the manifest.
 | Code | Description |
 |------|-------------|
 | `200 OK` | Agent deleted. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 
 **Response (200):**
@@ -286,14 +759,14 @@ Get real-time status proxied from the astromesh-node running the agent.
 |----------|-------|
 | **Method** | `GET` |
 | **Path** | `/api/v1/agents/:name/status` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Response codes:**
 
 | Code | Description |
 |------|-------------|
 | `200 OK` | Status from node. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 | `502 Bad Gateway` | Node is unreachable. |
 
@@ -329,7 +802,7 @@ Retrieve agent logs. Returns recent log lines from the node.
 |----------|-------|
 | **Method** | `GET` |
 | **Path** | `/api/v1/agents/:name/logs` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Query parameters:**
 
@@ -345,7 +818,7 @@ Retrieve agent logs. Returns recent log lines from the node.
 | Code | Description |
 |------|-------------|
 | `200 OK` | Log lines. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 
 **Response (200):**
@@ -377,7 +850,7 @@ Retrieve agent performance metrics from the node.
 |----------|-------|
 | **Method** | `GET` |
 | **Path** | `/api/v1/agents/:name/metrics` |
-| **Auth** | Required |
+| **Auth** | JWT or API key |
 
 **Query parameters:**
 
@@ -391,7 +864,7 @@ Retrieve agent performance metrics from the node.
 | Code | Description |
 |------|-------------|
 | `200 OK` | Metrics object. |
-| `401 Unauthorized` | Missing or invalid API key. |
+| `401 Unauthorized` | Missing or invalid credentials (no valid API key or JWT). |
 | `404 Not Found` | Agent does not exist. |
 
 **Response (200):**

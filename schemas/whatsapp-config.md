@@ -30,6 +30,19 @@ stringData:
 
 ## Webhook Flow
 
+> **Per-agent webhook endpoint.** Each agent exposes its own webhook on the node:
+> `GET/POST /v1/agents/{agent-name}/channels/whatsapp/webhook`. The GET verifies the
+> token; the POST receives messages. Register the public URL of this path
+> (e.g. via a tunnel or ingress) in the Meta App Dashboard. The `/webhook` paths
+> below are shown unqualified for brevity.
+>
+> **Sender name in prompts.** Incoming WhatsApp messages carry the sender's display
+> name (from Meta's `contacts[]`), which the runtime passes to the agent as
+> `contact_name` (astromesh v0.27.0+). Reference it in the system prompt:
+> `{% if contact_name %}Address the user as {{ contact_name }}.{% endif %}`.
+> Delivery/read/failed receipts are surfaced as `system`-direction channel events,
+> not routed to the agent.
+
 ### GET -- Meta Verification
 
 When you register the webhook URL in the Meta App Dashboard, Meta sends a GET request to verify ownership.
@@ -209,11 +222,12 @@ spec:
   guardrails:
     input:
       - type: pii_detection
-        action: mask           # Mask before storing in memory/logs
+        action: redact         # Redact before storing in memory/logs
     output:
-      - type: content_filter
-        categories: [hate_speech, self_harm]
-        action: block
+      - type: pii_detection
+        action: redact
+      - type: max_length
+        max_chars: 1600        # WhatsApp-friendly response cap (field is max_chars, not limit)
 ```
 
 ### Memory for Conversation Continuity

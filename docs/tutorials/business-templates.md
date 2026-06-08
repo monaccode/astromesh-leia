@@ -160,17 +160,17 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 30
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 30
   guardrails:
     input:
       - type: pii_detection
         action: redact
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Step 4: Deploy
@@ -277,10 +277,10 @@ spec:
     max_iterations: 5
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 25
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 25
   guardrails:
     input:
       - type: pii_detection
@@ -289,7 +289,7 @@ spec:
       - type: pii_detection
         action: redact
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 Notice how the architect adapted the template:
@@ -426,14 +426,14 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 20
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 20
   guardrails:
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 Key customizations the architect made:

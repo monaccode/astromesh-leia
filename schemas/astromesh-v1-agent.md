@@ -53,7 +53,7 @@ Configures which LLM(s) the agent uses.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `provider` | string | REQUIRED | -- | LLM provider. One of: `ollama`, `openai`, `openai_compat`, `azure_openai`. |
+| `provider` | string | REQUIRED | -- | LLM provider. **Runtime-wired values** (safe to deploy): `ollama`, `openai`, `openai_compat`, `azure_openai`. The schema *also* recognizes `vllm`, `llamacpp`, `huggingface`, `onnx`, but these are **not yet wired in the runtime engine** (deploy logs a warning and they won't serve). To reach a vLLM / llama.cpp / TGI server today, use `openai_compat` with its `endpoint`. |
 | `model` | string | REQUIRED | -- | Model identifier (e.g., `llama3.1:8b`, `gpt-4o`, `qwen2.5:7b`). |
 | `endpoint` | string | optional | provider-dependent | API endpoint URL. Defaults: `http://localhost:11434` for `ollama`, `https://api.openai.com/v1` for `openai`. Required for `openai_compat` and `azure_openai`. |
 | `api_key` | string | optional | -- | API key as a literal string. Mutually exclusive with `api_key_env`. Avoid committing secrets; prefer `api_key_env`. |
@@ -67,7 +67,13 @@ Configures which LLM(s) the agent uses.
 |-------|------|---------|-------------|
 | `temperature` | number | `0.7` | Sampling temperature, 0.0-2.0. Lower = more deterministic. |
 | `top_p` | number | `1.0` | Nucleus sampling threshold, 0.0-1.0. |
+| `top_k` | integer | provider default | Top-k sampling. Honored by `ollama`/`openai_compat` backends that support it. |
 | `max_tokens` | integer | `2048` | Maximum tokens in the response. |
+| `frequency_penalty` | number | `0.0` | Penalize token frequency, -2.0 to 2.0. |
+| `presence_penalty` | number | `0.0` | Penalize token presence, -2.0 to 2.0. |
+| `stop` | string \| string[] | -- | One or more stop sequences that halt generation. |
+
+> `temperature` and `max_tokens` may also be set at the top level of a provider block (shorthand) in addition to nesting them under `parameters`.
 
 **Validation rules:**
 - `provider` must be one of the four allowed values.
@@ -83,18 +89,56 @@ Configures which LLM(s) the agent uses.
 
 Same structure as `spec.model.primary`. Used when the primary model is unavailable or returns errors. The runtime tries the fallback after exhausting retries on the primary.
 
+### spec.model.extra (optional) — added in astromesh v0.28.0
+
+A map of **additional named providers** registered alongside `primary` and `fallback`. Every registered slot (primary + fallback + each `extra` entry) is ranked together by the configured routing `strategy` — so `extra` lets one agent fan out across more than two models without being limited to the primary/fallback pair.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `<slot_name>` | model block | Each key is an arbitrary slot name (e.g. `cheap`, `vision`, `local`); each value is a full provider block with the same shape as `primary`. |
+
+**Validation rules:**
+- `extra` must be a mapping (object). A non-object value is ignored with a warning.
+- The reserved slot names `primary` and `fallback` are **rejected** inside `extra` (they would shadow the canonical slots) and that entry is skipped with a warning.
+
+**Example:**
+```yaml
+model:
+  primary:
+    provider: openai
+    model: gpt-4o
+    api_key_env: OPENAI_API_KEY
+  fallback:
+    provider: ollama
+    model: llama3.1:8b
+  extra:
+    cheap:
+      provider: openai
+      model: gpt-4o-mini
+      api_key_env: OPENAI_API_KEY
+    local-vision:
+      provider: ollama
+      model: llama3.2-vision:11b
+      endpoint: http://localhost:11434
+  routing:
+    strategy: cost_optimized
+```
+
 ### spec.model.routing (optional)
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `strategy` | string | optional | `"quality_first"` | Routing strategy between primary and fallback. One of: `cost_optimized`, `latency_optimized`, `quality_first`, `capability_match`. |
+| `strategy` | string | optional | `"cost_optimized"` | Routing strategy across all registered model slots (primary + fallback + `extra`). One of: `cost_optimized`, `latency_optimized`, `quality_first`, `round_robin`, `capability_match`. |
 | `health_check_interval` | integer | optional | `30` | Seconds between health check pings to each model endpoint. |
 
 **Strategy descriptions:**
-- `cost_optimized` -- prefer the cheaper model when both are healthy.
-- `latency_optimized` -- prefer the model with lower observed latency.
-- `quality_first` -- always prefer primary; use fallback only on failure.
-- `capability_match` -- route based on task complexity (requires orchestration metadata).
+- `cost_optimized` *(default)* -- rank by each provider's estimated cost; prefer the cheapest healthy model.
+- `latency_optimized` -- rank by observed average latency; prefer the fastest healthy model.
+- `round_robin` -- rotate requests across all healthy models in turn.
+- `capability_match` -- filter to models that satisfy required capabilities (e.g. tools, vision) for the task.
+- `quality_first` -- recognized, but currently a no-op ranking: slots keep their declared order (primary first), so it behaves like "prefer primary, fall back on failure".
+
+> The router has a circuit breaker: 3 consecutive failures on a provider open it for a 60s cooldown (then half-open retry).
 
 ---
 
@@ -102,7 +146,7 @@ Same structure as `spec.model.primary`. Used when the primary model is unavailab
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `system` | string | optional | `""` | System prompt. Supports Jinja2 template syntax with variables: `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}`, `{{context}}`. |
+| `system` | string | optional | `""` | System prompt. Supports Jinja2 template syntax with variables: `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}`, `{{context}}`, `{{memory}}`, and `{{contact_name}}` (the sender's display name on channels that provide it, e.g. WhatsApp — added in astromesh v0.27.0). Guard optional vars: `{% if contact_name %}Address the user as {{ contact_name }}.{% endif %}`. |
 | `templates` | object | optional | `{}` | Named prompt templates. Keys are template names, values are Jinja2 template strings. Referenced in tools and orchestration. |
 
 **Example:**
@@ -175,6 +219,41 @@ Custom tools with inline logic defined by JSON Schema parameters. The runtime ge
 | `description` | string | REQUIRED | -- | Description of what the tool does. |
 | `parameters` | object | REQUIRED | -- | JSON Schema object defining the tool's input parameters. |
 
+### Type: mcp_stdio / mcp_sse / mcp_http
+
+Connect the agent to an external **MCP (Model Context Protocol) server** so its tools become callable by the agent's LLM. Pick the transport that matches the server: `mcp_stdio` (spawns a local process), `mcp_sse` (Server-Sent Events endpoint), or `mcp_http` (streamable HTTP endpoint).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | REQUIRED | One of `mcp_stdio`, `mcp_sse`, `mcp_http`. |
+| `name` | string | REQUIRED | Logical name for the MCP connection. |
+| `config` | object | REQUIRED | Transport config. For `mcp_stdio`: `{command, args, env}`. For `mcp_sse`/`mcp_http`: `{url, headers}`. |
+
+### Type: webhook
+
+Calls an external HTTP endpoint as a tool.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | REQUIRED | Must be `"webhook"`. |
+| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
+| `description` | string | REQUIRED | What the webhook does. |
+| `config` | object | REQUIRED | `{url, method, headers}`. |
+| `parameters` | object | optional | JSON Schema for the request payload. |
+
+### Type: rag
+
+Exposes a retrieval-augmented-generation knowledge source as a tool the LLM can query.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | REQUIRED | Must be `"rag"`. |
+| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
+| `description` | string | REQUIRED | What knowledge the source contains. |
+| `config` | object | REQUIRED | RAG source config (collection / index + retrieval settings). |
+
+> Common per-tool fields apply to every type: `rate_limit` (`{max_calls, period_seconds}`), `requires_approval` (bool), and `timeout_seconds`.
+
 **Example tools array:**
 ```yaml
 tools:
@@ -211,18 +290,20 @@ Configures agent memory backends.
 
 ### spec.memory.conversational (optional)
 
+> **Structure matters:** the runtime reads conversational settings **nested under `conversational`** (i.e. `spec.memory.conversational.strategy`, `spec.memory.conversational.max_turns`). A flat block like `memory: {type: conversational, backend: ...}` is silently ignored and defaults are used. Always nest.
+
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `backend` | string | optional | `"in_memory"` | Storage backend. One of: `in_memory`, `sqlite`, `redis`. |
+| `backend` | string | optional | `"in_memory"` | Storage backend. One of: `in_memory`, `sqlite`, `redis`, `postgres`. |
 | `strategy` | string | optional | `"sliding_window"` | Memory management strategy. One of: `sliding_window`, `summary`, `token_budget`. |
-| `max_turns` | integer | optional | `50` | Maximum conversation turns to retain (for `sliding_window`). |
+| `max_turns` | integer | optional | `50` | Maximum conversation turns to retain (for `sliding_window`). This is the exact key the runtime reads (`max_messages` is an accepted alias). |
 | `ttl` | integer | optional | `86400` | Time-to-live in seconds for memory entries. Default is 24 hours. |
 
 ### spec.memory.semantic (optional)
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `backend` | string | optional | `"chromadb"` | Vector store backend. One of: `chromadb`, `pinecone`. |
+| `backend` | string | optional | `"chromadb"` | Vector store backend. One of: `chromadb`, `pgvector`, `qdrant`, `in_memory`. |
 | `similarity_threshold` | number | optional | `0.75` | Minimum cosine similarity for retrieval, 0.0-1.0. |
 | `max_results` | integer | optional | `10` | Maximum number of results to return per query. |
 
@@ -242,18 +323,20 @@ Input and output validation rules. Both `input` and `output` are arrays of rule 
 
 | Rule Type | Applicable To | Fields | Description |
 |-----------|--------------|--------|-------------|
-| `pii_detection` | input, output | `action` (mask, block, warn) | Detects personally identifiable information. |
-| `max_length` | input, output | `max_chars` (integer) | Rejects messages exceeding the character limit. |
-| `topic_filter` | input | `blocked_topics` (string array), `action` (block, warn) | Blocks or warns on off-topic conversations. |
-| `cost_limit` | output | `max_cost_per_request` (number), `currency` (string) | Limits per-request LLM cost. |
-| `content_filter` | output | `categories` (string array), `action` (block, warn) | Filters harmful or inappropriate content. |
+| `pii_detection` | input, output | `action` (`redact`, `block`, `warn`, `log`) | Detects and handles emails, phone numbers, SSNs, credit cards. `redact` masks them in place. |
+| `max_length` | input, output | `max_chars` (integer) | Truncates/rejects content over the limit. **Field is `max_chars`** — `limit` is ignored. |
+| `topic_filter` | input | `blocked_topics` (string array), `action` | Blocks or warns on off-topic conversations. |
+| `cost_limit` | output | `max_tokens_per_turn` (integer) | Caps output tokens per turn. (There is no per-request USD field in the runtime.) |
+| `content_filter` | output | `blocked_patterns` (regex string array), `action` | Filters content matching any regex pattern. |
+
+> The action vocabulary is `redact`, `block`, `warn`, `log`. `prompt_injection` appears in some schema examples but is **not implemented** in the current runtime — don't rely on it.
 
 **Example:**
 ```yaml
 guardrails:
   input:
     - type: pii_detection
-      action: mask
+      action: redact
     - type: max_length
       max_chars: 4096
     - type: topic_filter
@@ -261,11 +344,11 @@ guardrails:
       action: warn
   output:
     - type: content_filter
-      categories: [hate_speech, self_harm]
+      blocked_patterns:
+        - "(?i)\\b(kill yourself|kys)\\b"
       action: block
     - type: cost_limit
-      max_cost_per_request: 0.10
-      currency: USD
+      max_tokens_per_turn: 1024
 ```
 
 ---
@@ -284,6 +367,17 @@ Controls what actions the agent is allowed to perform.
 | `network.allowed` | string array | optional | `[]` | Allowed outbound hostnames or CIDR ranges. |
 | `execution` | object | optional | `{}` | Execution controls. |
 | `execution.dry_run` | boolean | optional | `false` | When true, tools log intended actions without executing. |
+
+---
+
+## Channels (deployment-time, not in the agent spec)
+
+There is **no `spec.channels` block read by the runtime**. An agent is bound to a channel like WhatsApp at deployment time, through:
+
+1. **Environment variables** on the astromesh-node running the agent (e.g. `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`), typically injected as Kubernetes Secrets.
+2. **A per-agent webhook endpoint** exposed by the node: `GET/POST /v1/agents/{name}/channels/whatsapp/webhook` (GET verifies the token, POST receives messages). Register that URL in the Meta App Dashboard.
+
+Use `metadata.labels` (e.g. `channel: whatsapp`) to *tag* a channel agent, but do not put channel credentials in the manifest. See `schemas/whatsapp-config.md` for the full WhatsApp flow. Supported channels today: **WhatsApp** (production-ready). Telegram is recognized by tooling but not yet implemented in the runtime.
 
 ---
 
@@ -415,7 +509,7 @@ spec:
   guardrails:
     input:
       - type: pii_detection
-        action: mask
+        action: redact
       - type: max_length
         max_chars: 4096
       - type: topic_filter
@@ -423,11 +517,11 @@ spec:
         action: warn
     output:
       - type: content_filter
-        categories: [hate_speech, self_harm, explicit]
+        blocked_patterns:
+          - "(?i)\\b(kill yourself|kys)\\b"
         action: block
       - type: cost_limit
-        max_cost_per_request: 0.10
-        currency: USD
+        max_tokens_per_turn: 1024
 
   permissions:
     allowed_actions: [respond, use_tools]

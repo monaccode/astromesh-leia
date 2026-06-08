@@ -337,10 +337,11 @@ spec:
   guardrails:
     input:
       - type: pii_detection
-        action: mask                 # Mask PII before storing in memory/logs
+        action: redact                 # Mask PII before storing in memory/logs
     output:
       - type: content_filter
-        categories: [hate_speech, self_harm]
+        blocked_patterns:
+          - "(?i)\\b(kill yourself|kys)\\b"
         action: block
 ```
 
@@ -525,10 +526,11 @@ spec:
   guardrails:
     input:
       - type: pii_detection
-        action: mask       # Mask PII before storing in memory or logs
+        action: redact       # Mask PII before storing in memory or logs
     output:
       - type: content_filter
-        categories: [hate_speech, self_harm]
+        blocked_patterns:
+          - "(?i)\\b(kill yourself|kys)\\b"
         action: block
 ```
 

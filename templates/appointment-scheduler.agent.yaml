@@ -41,11 +41,11 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 20
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 20
   guardrails:
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600

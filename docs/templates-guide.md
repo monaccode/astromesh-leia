@@ -148,13 +148,13 @@ spec:
     timeout_seconds: 30
   memory:
     # Conversational memory tracks the full back-and-forth exchange
-    type: conversational
-    # in_memory backend -- fast, no external dependencies, lost on pod restart
-    backend: in_memory
-    # sliding_window drops the oldest turns when max_turns is reached
-    strategy: sliding_window
-    # 20 turns is enough for typical support interactions (10 user + 10 agent messages)
-    max_turns: 20
+    conversational:
+      # in_memory backend -- fast, no external dependencies, lost on pod restart
+      backend: in_memory
+      # sliding_window drops the oldest turns when max_turns is reached
+      strategy: sliding_window
+      # 20 turns is enough for typical support interactions (10 user + 10 agent messages)
+      max_turns: 20
   guardrails:
     input:
       # Detect and redact PII (emails, phone numbers, addresses) from user input
@@ -167,7 +167,7 @@ spec:
         action: redact
       # WhatsApp messages over ~1600 chars get truncated or split awkwardly
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Use Case
@@ -356,12 +356,12 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    # 30 turns supports a full reservation flow plus menu questions
-    # and potential modifications in the same session
-    max_turns: 30
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      # 30 turns supports a full reservation flow plus menu questions
+      # and potential modifications in the same session
+      max_turns: 30
   guardrails:
     input:
       # Redact PII from input -- phone numbers are collected as part of the
@@ -372,7 +372,7 @@ spec:
       # No output PII redaction -- the agent needs to confirm back
       # the reservation details including name and time
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Use Case
@@ -578,12 +578,12 @@ spec:
     max_iterations: 5
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    # 25 turns supports browsing conversations where the customer
-    # explores multiple products before deciding
-    max_turns: 25
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      # 25 turns supports browsing conversations where the customer
+      # explores multiple products before deciding
+      max_turns: 25
   guardrails:
     input:
       # Redact PII -- customers may paste order confirmation emails
@@ -596,7 +596,7 @@ spec:
       - type: pii_detection
         action: redact
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Use Case
@@ -810,19 +810,19 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    # 20 turns is sufficient -- appointment booking is typically shorter
-    # than restaurant interactions (no menu browsing)
-    max_turns: 20
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      # 20 turns is sufficient -- appointment booking is typically shorter
+      # than restaurant interactions (no menu browsing)
+      max_turns: 20
   guardrails:
     # NOTE: No input PII redaction -- this is intentional.
     # The scheduling flow requires the agent to process names and phone
     # numbers as part of the booking. Redacting them would break the flow.
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Use Case
@@ -1053,12 +1053,12 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    # 30 turns supports longer sales conversations where the agent
-    # needs to remember what BANT criteria have been uncovered
-    max_turns: 30
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      # 30 turns supports longer sales conversations where the agent
+      # needs to remember what BANT criteria have been uncovered
+      max_turns: 30
   guardrails:
     input:
       # Redact PII -- prospects may share company details and contact
@@ -1069,7 +1069,7 @@ spec:
       # No output PII redaction -- the agent may need to reference
       # the prospect's company name or stated needs in responses
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### Use Case
@@ -1278,13 +1278,13 @@ spec:
     # users are more patient and onboarding answers can be complex
     timeout_seconds: 60
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    # 40 turns is the highest across all templates -- onboarding is a
-    # multi-day process and the agent needs to remember what steps
-    # the employee has already completed
-    max_turns: 40
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      # 40 turns is the highest across all templates -- onboarding is a
+      # multi-day process and the agent needs to remember what steps
+      # the employee has already completed
+      max_turns: 40
   guardrails:
     input:
       # Redact PII -- employees may paste personal info (SSN, bank details)
@@ -1299,7 +1299,7 @@ spec:
       # 4000 char limit for web -- much higher than WhatsApp's 1600.
       # Allows detailed step-by-step instructions with proper formatting.
       - type: max_length
-        limit: 4000
+        max_chars: 4000
 ```
 
 ### Use Case
@@ -1542,10 +1542,10 @@ spec:
     max_iterations: 5             # 5-10
     timeout_seconds: 30           # 30-60
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 20                 # 15-50
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 20               # 15-50
   guardrails:
     input: []
     output: []
@@ -1608,7 +1608,7 @@ guardrails:
       action: redact
     # Always set max_length based on channel
     - type: max_length
-      limit: 1600  # or 4000 for web
+      max_chars: 1600  # or 4000 for web
 ```
 
 Rules of thumb:

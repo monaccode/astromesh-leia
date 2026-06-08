@@ -40,10 +40,10 @@ spec:
     max_iterations: 5
     timeout_seconds: 60
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 40
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 40
   guardrails:
     input:
       - type: pii_detection
@@ -52,4 +52,4 @@ spec:
       - type: pii_detection
         action: redact
       - type: max_length
-        limit: 4000
+        max_chars: 4000

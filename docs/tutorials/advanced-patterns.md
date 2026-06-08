@@ -162,17 +162,17 @@ spec:
             type: string
         required: [room_type, check_in, check_out, guest_name, guest_email]
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 30
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 30
   guardrails:
     input:
       - type: pii_detection
         action: redact
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### How plan_and_execute works at runtime
@@ -292,14 +292,14 @@ spec:
       agent: store-gamma-scraper
       description: "Search Store Gamma for product pricing, availability, and shipping options"
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 15
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 15
   guardrails:
     output:
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### How parallel_fan_out works at runtime
@@ -443,10 +443,10 @@ spec:
             type: string
         required: [invoice_number, amount, reason]
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 20
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 20
 ```
 
 **Technical agent** (`technical-agent.agent.yaml`):
@@ -517,10 +517,10 @@ spec:
             enum: [low, medium, high, critical]
         required: [title, description, severity]
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 30
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 30
 ```
 
 **Sales agent** (`sales-agent.agent.yaml`):
@@ -589,10 +589,10 @@ spec:
             type: string
         required: [plan_a, plan_b]
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 20
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 20
 ```
 
 **Now the supervisor agent** (`enterprise-support.agent.yaml`):
@@ -653,10 +653,10 @@ spec:
       agent: sales-agent
       description: "Handles upgrade inquiries, new purchases, pricing questions, and feature comparisons"
   memory:
-    type: conversational
-    backend: in_memory
-    strategy: sliding_window
-    max_turns: 40
+    conversational:
+      backend: in_memory
+      strategy: sliding_window
+      max_turns: 40
   guardrails:
     input:
       - type: pii_detection
@@ -665,7 +665,7 @@ spec:
       - type: pii_detection
         action: redact
       - type: max_length
-        limit: 1600
+        max_chars: 1600
 ```
 
 ### How supervisor works at runtime

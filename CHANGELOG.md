@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-08
+
+Synced Leia's knowledge with current astromesh (core v0.28.5, Nexus v0.3.0). This makes the architect generate correct, current manifests and the operator speak the new control-plane API.
+
+### Fixed
+
+- **Templates: memory config was silently ignored.** All 6 templates used a flat `memory:` block, but the runtime reads memory nested under `conversational` (`astromesh/core/memory.py`). Converted every template to `spec.memory.conversational.{backend,strategy,max_turns}` so the configured window actually applies.
+- **Templates: `max_length` guardrail was silently ignored.** The runtime reads `max_chars` (`astromesh/core/guardrails.py`), not `limit`. Renamed the field in all 6 templates so the response cap is enforced.
+- **`leia-architect` emitted invalid patterns and sections.** It told the architect to use `single`/`chain`/`router`/`parallel` (none of which exist) and to write `spec.system_prompt`/`spec.constraints`. Corrected to the real patterns (`react`, `plan_and_execute`, `pipeline`, `parallel_fan_out`, `supervisor`, `swarm`) and real sections (`spec.prompts.system`, `spec.guardrails`, nested `spec.memory`).
+
+### Changed
+
+- **`schemas/astromesh-v1-agent.md`** modernized to astromesh v0.28.x: added `spec.model.extra` (multi-provider ranking), more generation `parameters` (`top_k`, `frequency_penalty`, `presence_penalty`, `stop`), `round_robin` routing (default is `cost_optimized`), MCP/`webhook`/`rag` tool types, `postgres` conversational + `pgvector`/`qdrant` semantic memory backends, corrected guardrail fields (`pii_detection` action `redact`, `content_filter` `blocked_patterns`, `cost_limit` `max_tokens_per_turn`), the `{{contact_name}}` prompt variable, and a note that channels are wired via env vars + per-agent webhook (no `spec.channels`).
+- **`schemas/nexus-api.md`** updated to Nexus v0.3.0: dual auth (JWT Bearer **or** `X-API-Key`), new `/auth/register|login|refresh`, `/api/v1/me`, tenant management, and per-tenant API-key management; agent endpoints now accept either credential.
+- **`schemas/whatsapp-config.md`**: documented the per-agent webhook path (`/v1/agents/{name}/channels/whatsapp/webhook`), the `contact_name` context variable, and `system`-direction delivery receipts.
+- **Provider guidance**: clarified that only `ollama`/`openai`/`openai_compat`/`azure_openai` are runtime-wired; reach vLLM/llama.cpp/TGI via `openai_compat`.
+
 ## [0.1.0] - 2026-04-02
 
 ### Added
