@@ -85,6 +85,30 @@ Configures which LLM(s) the agent uses.
 - `top_p` must be between 0.0 and 1.0 inclusive.
 - `max_tokens` must be a positive integer.
 
+### spec.model — Moonshot / Kimi (via `openai_compat`) — astromesh v0.28.6+
+
+Moonshot's **Kimi** models are reached through the `openai_compat` provider (there is no dedicated `kimi`/`moonshot` provider value). Point `endpoint` at Moonshot's OpenAI-compatible base URL and pass the key via `api_key_env`:
+
+| Field | Value |
+|-------|-------|
+| `provider` | `openai_compat` |
+| `endpoint` | `https://api.moonshot.ai/v1` |
+| `api_key_env` | `MOONSHOT_API_KEY` |
+| `model` | `kimi-k2.5` or `kimi-k2.6` |
+
+```yaml
+model:
+  primary:
+    provider: openai_compat
+    model: kimi-k2.6
+    endpoint: https://api.moonshot.ai/v1
+    api_key_env: MOONSHOT_API_KEY
+```
+
+**Thinking models (`reasoning_content`).** `kimi-k2.5` and `kimi-k2.6` are reasoning models: they emit their chain-of-thought in a separate `reasoning_content` field. The runtime handles this automatically — it preserves `reasoning_content` on assistant tool-call turns, so Kimi works inside `react` (and the other tool-calling patterns) with no extra config. Dropping it triggers `400 Bad Request — thinking is enabled but reasoning_content is missing in assistant tool call message`, a client error the runtime already guards against.
+
+**Cost & cache-aware pricing (astromesh v0.28.8–v0.28.9).** Kimi pricing is built into the router's cost estimation, so `cost_optimized` ranks Kimi correctly against OpenAI/Ollama slots. Moonshot's context cache is priced too: cache-read input tokens bill at a lower rate and surface as `cache_read_input_tokens` in `response.usage`. Costs are attributed under a derived provider label (`kimi` for kimi/moonshot models, `anthropic` for claude, `openai` for gpt/o-series, else `openai_compat`).
+
 ### spec.model.fallback (optional)
 
 Same structure as `spec.model.primary`. Used when the primary model is unavailable or returns errors. The runtime tries the fallback after exhausting retries on the primary.
@@ -132,7 +156,7 @@ model:
 | `health_check_interval` | integer | optional | `30` | Seconds between health check pings to each model endpoint. |
 
 **Strategy descriptions:**
-- `cost_optimized` *(default)* -- rank by each provider's estimated cost; prefer the cheapest healthy model.
+- `cost_optimized` *(default)* -- rank by each provider's estimated cost; prefer the cheapest healthy model. Cache-aware for providers that expose cached tokens (e.g. Kimi's context cache — see the Moonshot/Kimi note above), so cache-read input is priced at its lower rate.
 - `latency_optimized` -- rank by observed average latency; prefer the fastest healthy model.
 - `round_robin` -- rotate requests across all healthy models in turn.
 - `capability_match` -- filter to models that satisfy required capabilities (e.g. tools, vision) for the task.

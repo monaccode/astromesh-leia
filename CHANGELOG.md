@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-01
+
+Synced Leia's knowledge to astromesh **core v0.28.9** (from v0.28.5), so the architect can design — and the operator can explain — agents backed by Moonshot's Kimi models.
+
+### Added
+
+- **`schemas/astromesh-v1-agent.md`: Moonshot / Kimi provider recipe** (astromesh v0.28.6+). Documented reaching `kimi-k2.5`/`kimi-k2.6` via `provider: openai_compat` + `endpoint: https://api.moonshot.ai/v1` + `api_key_env: MOONSHOT_API_KEY`, including the thinking-model behavior (`reasoning_content` is preserved automatically on tool-call turns; the `400 … reasoning_content is missing` error the runtime guards against) and cache-aware pricing (`cache_read_input_tokens`, derived provider labels) from v0.28.8–v0.28.9.
+- **`leia-architect`**: provider-detection guidance now offers Kimi when a `MOONSHOT_API_KEY` is present or requested, while still defaulting to Ollama.
+
+### Changed
+
+- **`schemas/astromesh-v1-agent.md`: `cost_optimized` routing** noted as cache-aware for providers that expose cached tokens (e.g. Kimi's context cache).
+- **Version compatibility** table + badge bumped to Leia 0.2.x ↔ astromesh 0.28.9.
+
 ## [0.2.0] - 2026-06-08
 
 Synced Leia's knowledge with current astromesh (core v0.28.5, Nexus v0.3.0). This makes the architect generate correct, current manifests and the operator speak the new control-plane API.

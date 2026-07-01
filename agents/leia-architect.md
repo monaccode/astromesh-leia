@@ -34,6 +34,8 @@ Run `ollama list` via Bash to check what models are available locally.
 
 **Provider values** that actually serve at runtime: `ollama`, `openai`, `openai_compat`, `azure_openai`. (The schema also lists `vllm`/`llamacpp`/`huggingface`/`onnx`, but they aren't wired yet — reach those servers via `openai_compat` + `endpoint`.) For resilience you may add a `spec.model.fallback`, and `spec.model.extra` (a map of extra named providers ranked together by `spec.model.routing.strategy`). Keep `routing.strategy` default `cost_optimized` unless the user asks otherwise.
 
+**Moonshot / Kimi:** if the user provides a `MOONSHOT_API_KEY` or asks for Kimi, use `provider: openai_compat`, `endpoint: https://api.moonshot.ai/v1`, `api_key_env: MOONSHOT_API_KEY`, `model: kimi-k2.6` (or `kimi-k2.5`). These are reasoning models (`reasoning_content`) the runtime handles automatically, and their cache-aware pricing is factored into `cost_optimized`. Still default to Ollama unless a cloud key is explicitly available.
+
 ### 3. Select Orchestration Pattern
 
 Use the **real** astromesh pattern names (set `spec.orchestration.pattern`). There is no `single`/`chain`/`router`/`parallel` — the six valid patterns are:
