@@ -13,6 +13,21 @@ This document describes the six orchestration patterns available for astromesh a
 | `supervisor` | Coordinating multiple specialized sub-agents | A supervisor agent delegates tasks to specialized child agents, reviews their output, and synthesizes the final response. | Project management agent delegating to design, engineering, and QA agents. |
 | `swarm` | Dynamic, peer-to-peer agent collaboration | Agents hand off conversations to each other based on context. No central coordinator; each agent decides when to transfer. | Sales team: greeter -> qualifier -> technical-demo -> closer. |
 
+### Per-role models (astromesh v0.29.0+)
+
+Each pattern requests one or more **named roles** at its decision points, and an agent can bind a different model — and source (local `ollama` or cloud `litellm`) — to each role via `spec.model.default` + `roles`. See `schemas/astromesh-v1-agent.md` for the full schema. Roles per pattern:
+
+| Pattern | Roles requested |
+|---------|------------------|
+| `react` | `reasoner` |
+| `plan_and_execute` | `planner`, `worker`, `synthesizer` |
+| `parallel_fan_out` | `planner`, `worker`, `synthesizer` |
+| `pipeline` | `stage:<name>` per stage (default: `analyze`, `process`, `synthesize`) |
+| `supervisor` | `supervisor` |
+| `swarm` | `reasoner` |
+
+Any role an agent doesn't define falls back to `default`. This is what lets a `plan_and_execute` agent plan with a frontier cloud model and execute with a cheap local one.
+
 ---
 
 ## react

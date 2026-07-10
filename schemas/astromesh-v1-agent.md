@@ -164,6 +164,68 @@ model:
 
 > The router has a circuit breaker: 3 consecutive failures on a provider open it for a 60s cooldown (then half-open retry).
 
+### spec.model per-role selection (`default` / `roles`) — astromesh v0.29.0+
+
+Everything above (`primary` / `fallback` / `extra` / `routing`) configures **one** router shared by the whole agent. As of core **v0.29.0** an agent can instead bind a distinct model — and source — to **each orchestration role**, so a `plan_and_execute` agent can plan with a frontier cloud model and execute with a cheap local one. Use this shape **instead of** `primary`/`fallback`/`extra` (do not mix the two shapes in one `model` block):
+
+```yaml
+spec:
+  model:
+    default:                 # REQUIRED with per-role: the router every unconfigured role falls back to
+      candidates:
+        - {source: ollama, model: "llama3.1:8b", endpoint: "http://localhost:11434"}
+      strategy: cost_optimized
+    roles:                   # optional: role name -> its own router
+      planner:
+        candidates:
+          - {source: litellm, model: "anthropic/claude-opus-4-8", api_key_env: ANTHROPIC_API_KEY}
+        strategy: quality_first
+      worker:
+        candidates:
+          - {source: ollama, model: "llama3.1:8b"}
+        strategy: cost_optimized
+```
+
+- `default` is REQUIRED whenever this shape is used — it is the `ModelRouter` every unrecognized or unconfigured role falls back to. Each role in `roles` becomes its own independent router (its own circuit breaker), ranked by its own `strategy` (same strategy values as `spec.model.routing`).
+
+**Candidate fields** (each entry in a `candidates` array):
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `source` | No | Provider family: `litellm` (cloud multi-provider — 100+ models via LiteLLM; needs the runtime's optional `litellm` extra installed), `ollama`, or `openai_compat` (aliases `openai`, `azure_openai`). If omitted it is inferred from `model`: a name containing `/` (e.g. `anthropic/claude-opus-4-8`) infers `litellm`; otherwise `openai_compat`. |
+| `model` | Yes | Model name/path. Format depends on `source` (`"llama3.1:8b"` for Ollama, `"anthropic/claude-opus-4-8"` for LiteLLM, `kimi-k2.6` for a Moonshot `openai_compat` candidate). |
+| `endpoint` | No | Override endpoint URL. Defaults vary by `source` (e.g. `http://localhost:11434` for Ollama). |
+| `api_key_env` | No | Env var holding the API key. Prefer this over `api_key`. |
+| `api_key` | No | Inline API key — avoid; keep secrets out of YAML. |
+| `parameters` | No | Sampling parameters (`temperature`, `top_p`, `max_tokens`, …) passed through to the provider. |
+
+If a `source: litellm` candidate is configured but the `litellm` package isn't installed on the node, the runtime skips **only that candidate** and logs a warning — startup does not fail.
+
+**Role vocabulary** — each pattern requests these roles; any role not defined under `roles` falls back to `default`:
+
+| Pattern | Roles requested |
+|---------|------------------|
+| `react` | `reasoner` |
+| `plan_and_execute` | `planner`, `worker`, `synthesizer` |
+| `parallel_fan_out` | `planner`, `worker`, `synthesizer` |
+| `pipeline` | `stage:<name>` per configured stage (default stages: `analyze`, `process`, `synthesize`) |
+| `supervisor` | `supervisor` |
+| `swarm` | `reasoner` |
+
+**Remapping** — `spec.orchestration.role_map` points a pattern's built-in role at one of your own role names without renaming it in `roles`:
+
+```yaml
+spec:
+  orchestration:
+    pattern: react
+    role_map:
+      reasoner: planner   # ReAct's "reasoner" requests route to the "planner" router
+```
+
+Resolution order for a requested role: `role_map[role]` (if remapped) → resolved name looked up in `spec.model.roles` → `default`.
+
+**Backward compatibility:** the legacy `primary` / `fallback` / `extra` / `routing` shape still works unchanged — internally it is normalized into a single `default` role. No migration needed; adopt `default`/`roles` only where you want per-role selection. **Per-role selection requires the deployed runtime at core `v0.29.0+`**; on older nodes emit the legacy `primary`/`fallback` shape instead.
+
 ---
 
 ## spec.prompts (optional)

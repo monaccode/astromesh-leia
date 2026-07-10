@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-10
+
+Synced Leia's knowledge to astromesh **core v0.29.0**, teaching the plugin the transversal **per-role model** feature so the architect can design agents that bind a different model — and source — to each orchestration role.
+
+### Added
+
+- **`schemas/astromesh-v1-agent.md`: per-role model selection** (astromesh v0.29.0+). New section documenting the `spec.model.default` + `roles` shape: `candidates` lists with fields `source`/`model`/`endpoint`/`api_key_env`/`api_key`/`parameters`; the `litellm` cloud multi-provider source (100+ models via the runtime's optional `litellm` extra) alongside `ollama`/`openai_compat`; source inference from the model string; graceful skip when `litellm` isn't installed; the role vocabulary each pattern requests; `orchestration.role_map` remapping; and backward compatibility (legacy `primary`/`fallback`/`extra` normalize into the `default` role).
+- **`schemas/orchestration-patterns.md`: per-role table** mapping each pattern to the roles it requests (`reasoner` / `planner` / `worker` / `synthesizer` / `supervisor` / `stage:<name>`).
+- **`agents/leia-architect.md`: per-role guidance.** The architect now offers per-role models when the pattern has distinct reasoning/execution roles and a cloud key is available (strong `litellm` planner/supervisor + cheap local `ollama` worker/default), with guardrails: `default` is required, `litellm` candidates need `api_key_env`, and per-role and legacy shapes must not be mixed.
+
+### Notes
+
+- Per-role model selection requires the deployed runtime at astromesh core **v0.29.0+**. On older nodes the architect emits the legacy single-model shape. The 6 bundled templates remain single-model (all-Ollama) so they deploy as-is without cloud keys; per-role is opt-in through the architect.
+
 ## [0.2.1] - 2026-07-01
 
 Synced Leia's knowledge to astromesh **core v0.28.9** (from v0.28.5), so the architect can design — and the operator can explain — agents backed by Moonshot's Kimi models.
