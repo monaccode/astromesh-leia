@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-27
+
+Synced Leia's knowledge to astromesh **core v0.36.0** (from v0.29.0), consolidating the knowledge-sync roadmap from v0.29 through v0.36 so the architect generates correct manifests and the operator understands current control planes and streaming semantics.
+
+### Added
+
+- **`schemas/astromesh-v1-agent.md`: tool types clarity.** Documented that only `builtin`, `agent`, and `client` tool types load from agent YAML; `client` tools deliver via streaming `tool_call`/`tool_result` pairs and respond with `{"ok": true}`. Marked `internal`, `webhook`, `rag`, and `mcp_*` types as not loadable from YAML and migrated all example tool arrays and tutorials away from those types.
+- **`schemas/astromesh-v1-agent.md`: model-block consumption matrix.** New "Which keys each source consumes" section documenting ollama's nested `options` and `num_predict` (with `frequency_penalty`/`presence_penalty` producing warnings), `timeout` honored on `openai_compat`, and `litellm` ignoring `endpoint` (cloud source only); unconsumed keys now trigger a WARNING. `parameters` and `timeout` are now honored uniformly across all sources.
+- **`agents/leia-architect.md`: client tool guidance.** The architect now offers `client` tools as the primary recommendation for immediate feedback and never emits non-loadable types (no more `webhook`/`internal`/`mcp_*`/`rag` suggestions).
+- **`schemas/astromesh-v1-agent.md`: Streaming contract & usage.** New section documenting the on-wire `tool_call`/`tool_result` streaming protocol, response usage accounting (`usage.by_model`), and compatibility with astromesh v0.34.0+ for detailed cost tracking per model within a run.
+- **`schemas/nexus-api.md`: RAG pipelines and workflow registration.** Documented RAGPipeline CRUD endpoints (`/v1/rag/pipelines`) from core v0.31 and the workflow-registration endpoint (`/v1/workflows/register`) from core v0.32.
+- **README compatibility row:** Updated to show Leia 0.4.x ↔ astromesh-nexus 0.3.x ↔ astromesh core 0.29–0.36.x.
+
+### Notes
+
+- This release syncs tooling knowledge through six major core releases (v0.29 → v0.36), laying the foundation for deeper integration features in future LEIA versions.
+
 ## [0.3.0] - 2026-07-10
 
 Synced Leia's knowledge to astromesh **core v0.29.0**, teaching the plugin the transversal **per-role model** feature so the architect can design agents that bind a different model — and source — to each orchestration role.
