@@ -199,6 +199,23 @@ spec:
 | `api_key` | No | Inline API key — avoid; keep secrets out of YAML. |
 | `parameters` | No | Sampling parameters (`temperature`, `top_p`, `max_tokens`, …) passed through to the provider. |
 
+#### Which keys each source consumes (astromesh core v0.36.0+)
+
+`parameters` and `timeout` are honored by **all** wired sources — until v0.36.0
+several branches accepted them in the schema and then silently dropped them, so
+a `temperature` or `timeout` set in YAML could have no effect. That is fixed:
+
+| Key | `ollama` | `openai_compat` | `litellm` |
+|-----|----------|-----------------|-----------|
+| `parameters.temperature` / `top_p` / `max_tokens` | ✅ (routed into ollama's nested `options`; `max_tokens`→`num_predict`) | ✅ | ✅ |
+| `parameters.presence_penalty` / `frequency_penalty` | ⚠️ warns — not on ollama's native surface | ✅ | ✅ |
+| `timeout` | ✅ | ✅ (fixed v0.35.1) | ✅ |
+| `endpoint` | ✅ | ✅ | ⚠️ ignored — litellm routes on the model prefix |
+
+A model block that declares a key its source ignores now logs a `WARNING`
+naming the source and the key, instead of dropping it in silence. Declare only
+what the chosen source consumes.
+
 If a `source: litellm` candidate is configured but the `litellm` package isn't installed on the node, the runtime skips **only that candidate** and logs a warning — startup does not fail.
 
 **Role vocabulary** — each pattern requests these roles; any role not defined under `roles` falls back to `default`:
