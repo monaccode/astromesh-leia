@@ -267,7 +267,13 @@ Controls how the agent processes tasks and uses tools.
 
 ## spec.tools (optional)
 
-Array of tool definitions. Each tool must have a `type` field. Three types are supported:
+Array of tool definitions. Each tool must have a `type` field. Only **three**
+tool types can be loaded from an agent YAML file: `builtin`, `agent`, and
+`client`. Any other `type` value (`internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`,
+`webhook`, `rag`) is **not loadable from YAML** — the runtime logs a `WARNING`
+naming the agent, the tool and the unsupported type, and skips the tool (it is
+never registered, never reaches the model). From astromesh core 1.0 an
+unsupported type becomes a hard error. Do not author agents with those types.
 
 ### Type: builtin
 
@@ -290,53 +296,27 @@ Delegates to another deployed agent as a tool.
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
 | `agent` | string | REQUIRED | -- | `metadata.name` of the target agent. Must be deployed in the same namespace. |
 | `description` | string | optional | target agent's `spec.identity.description` | Override description for the tool. |
-| `parameters` | object | optional | -- | JSON Schema defining the input parameters for the agent tool call. |
+| `parameters` | object | optional | -- | Input parameters. Accepts the shorthand `{param: {type, description}}` (the runtime normalizes it into valid JSON Schema) or a full JSON Schema object. |
 | `context_transform` | string | optional | -- | Jinja2 template to transform context before passing to the sub-agent. |
 | `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, period_seconds: int}`. |
 
-### Type: internal
+### Type: client (astromesh core v0.35.0+)
 
-Custom tools with inline logic defined by JSON Schema parameters. The runtime generates the tool interface; the agent's LLM decides when to call it.
+A tool the runtime **announces to the model but never executes**. The point of
+the call is the call itself — "show this chart", "open this form" — and what it
+means is the consumer's business, not the runtime's. When the model calls a
+`client` tool the runtime returns `{"ok": true}` without running anything; the
+call is delivered live to the consumer through the streaming `tool_call` /
+`tool_result` events (see *Streaming contract* below) and recorded afterwards in
+the run's `steps` (`action` / `action_input`). With nobody listening a `client`
+tool is a silent no-op — that is correct, not a bug.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `type` | string | REQUIRED | -- | Must be `"internal"`. |
+| `type` | string | REQUIRED | -- | Must be `"client"`. |
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | -- | Description of what the tool does. |
-| `parameters` | object | REQUIRED | -- | JSON Schema object defining the tool's input parameters. |
-
-### Type: mcp_stdio / mcp_sse / mcp_http
-
-Connect the agent to an external **MCP (Model Context Protocol) server** so its tools become callable by the agent's LLM. Pick the transport that matches the server: `mcp_stdio` (spawns a local process), `mcp_sse` (Server-Sent Events endpoint), or `mcp_http` (streamable HTTP endpoint).
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | One of `mcp_stdio`, `mcp_sse`, `mcp_http`. |
-| `name` | string | REQUIRED | Logical name for the MCP connection. |
-| `config` | object | REQUIRED | Transport config. For `mcp_stdio`: `{command, args, env}`. For `mcp_sse`/`mcp_http`: `{url, headers}`. |
-
-### Type: webhook
-
-Calls an external HTTP endpoint as a tool.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | Must be `"webhook"`. |
-| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | What the webhook does. |
-| `config` | object | REQUIRED | `{url, method, headers}`. |
-| `parameters` | object | optional | JSON Schema for the request payload. |
-
-### Type: rag
-
-Exposes a retrieval-augmented-generation knowledge source as a tool the LLM can query.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | Must be `"rag"`. |
-| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | What knowledge the source contains. |
-| `config` | object | REQUIRED | RAG source config (collection / index + retrieval settings). |
+| `description` | string | REQUIRED | -- | What the call means to the consumer. |
+| `parameters` | object | optional | -- | Input parameters. Shorthand `{param: {type, description}}` is normalized into valid JSON Schema before it reaches the model — required, because a strict provider rejects the whole request on an invalid schema. |
 
 > Common per-tool fields apply to every type: `rate_limit` (`{max_calls, period_seconds}`), `requires_approval` (bool), and `timeout_seconds`.
 
