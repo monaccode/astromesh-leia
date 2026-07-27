@@ -618,3 +618,37 @@ spec:
     execution:
       dry_run: false
 ```
+
+---
+
+## Streaming contract & usage (astromesh core v0.34.0 / v0.36.0)
+
+A run is observable while it happens. `AgentRuntime.run()` accepts an `on_event`
+callback and `/v1/ws/agent/{name}` streams the same events over WebSocket:
+
+```
+status → (token | tool_call | tool_result)* → done | error
+```
+
+- `token` — one whole model completion (per-iteration reasoning under ReAct; NOT the final answer).
+- `tool_call` — `{id, name, arguments}`, emitted **before** the tool runs. For a `client` tool this event *is* the delivery.
+- `tool_result` — `{id, ok}`, after the tool returns. A `client` tool always reports `ok: true`.
+- `done` — `{answer, session_id, usage}`.
+
+### usage.by_model (v0.36.0)
+
+`done.usage` and the `/run` response carry per-model attribution — a single run
+routinely touches several models (multi-model patterns, per-role routing,
+provider fallback), so the flat `usage.model` has no correct value there.
+
+```
+usage = {
+  tokens_in, tokens_out,            # totals (flat, kept for compatibility)
+  model,                            # first model seen — legacy
+  by_model: [ { provider, model, role, calls, tokens_in, tokens_out, cost } ]
+}
+```
+
+`by_model` is the authoritative breakdown; sort is by descending consumption.
+There is no cost/credits economics here beyond the provider `cost` estimate —
+tenant billing lives in the nexus hub, not the core run response.
