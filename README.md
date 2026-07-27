@@ -53,7 +53,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.2.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.4.0.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -120,6 +120,7 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
+| 0.4.x | 0.4.x | 0.29 – 0.36.x |
 | 0.2.x | 0.3.x | 0.18 – 0.28.9 |
 | 0.1.x | 0.1.x | 0.18+ |
 
