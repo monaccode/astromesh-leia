@@ -332,7 +332,7 @@ tools:
     name: lookup_inventory
     agent: inventory-agent
     description: "Check product availability and pricing"
-  - type: internal
+  - type: client
     name: score_lead
     description: "Score a lead from 0-100 based on qualification criteria"
     parameters:
@@ -521,7 +521,7 @@ spec:
     timeout_seconds: 30
 
   tools:
-    - type: internal
+    - type: client
       name: score_lead
       description: "Score a lead from 0-100 based on qualification criteria"
       parameters:
