@@ -906,6 +906,31 @@ curl http://localhost:8080/api/v1/agents/sales-qualifier/metrics \
 
 ---
 
+## RAG Pipeline and Workflow Resources
+
+### RAGPipeline resources (astromesh core v0.31.0+)
+
+CRUD over RAGPipeline resources, the RAG twin of `/v1/agents`. An external tool
+can author knowledge bases declaratively.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/rag/pipelines` | List pipelines (store seeded from `config/rag/*.rag.yaml`). |
+| GET | `/v1/rag/pipelines/{name}` | Get one. |
+| POST | `/v1/rag/pipelines` | Create; body validated via `RAGPipelineLoader.spec_from_raw` (422 on malformed). |
+| PUT | `/v1/rag/pipelines/{name}` | Update; `metadata.name` must equal the path (400 otherwise). |
+| DELETE | `/v1/rag/pipelines/{name}` | Delete. |
+
+Distinct from the operation endpoints `/v1/rag/ingest` and `/v1/rag/query`.
+
+### Dynamic blueprint registration (astromesh core v0.32.0+)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/workflows/register` | Register a full blueprint `{workflow, agents, rag_pipelines}` at runtime (RAG → agents → workflow order, so an agent's KB resolves at build). Idempotent upsert; 422 on invalid spec, 503 without engine/runtime. Launch it afterwards with the existing `POST /v1/workflows/{name}/run`. |
+
+---
+
 ### GET /healthz
 
 Liveness probe. Always returns 200 if the API process is running.
