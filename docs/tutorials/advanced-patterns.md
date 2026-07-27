@@ -125,7 +125,7 @@ spec:
     max_iterations: 10
     timeout_seconds: 60
   tools:
-    - type: internal
+    - type: client
       name: check_availability
       description: "Check room availability for given dates and guest count"
       parameters:
@@ -141,7 +141,7 @@ spec:
             type: integer
             description: "Number of guests"
         required: [check_in, check_out, guests]
-    - type: internal
+    - type: client
       name: create_booking
       description: "Create a confirmed reservation and return a booking reference"
       parameters:
@@ -418,7 +418,7 @@ spec:
     max_iterations: 5
     timeout_seconds: 30
   tools:
-    - type: internal
+    - type: client
       name: lookup_invoice
       description: "Look up an invoice by number or customer account"
       parameters:
@@ -429,7 +429,7 @@ spec:
           account_id:
             type: string
         required: []
-    - type: internal
+    - type: client
       name: process_refund
       description: "Submit a refund request"
       parameters:
@@ -493,7 +493,7 @@ spec:
     max_iterations: 8
     timeout_seconds: 30
   tools:
-    - type: internal
+    - type: client
       name: search_knowledge_base
       description: "Search the technical knowledge base for articles and solutions"
       parameters:
@@ -502,7 +502,7 @@ spec:
           query:
             type: string
         required: [query]
-    - type: internal
+    - type: client
       name: create_ticket
       description: "Create a support ticket for engineering investigation"
       parameters:
@@ -567,7 +567,7 @@ spec:
     max_iterations: 5
     timeout_seconds: 30
   tools:
-    - type: internal
+    - type: client
       name: get_pricing
       description: "Get pricing details for a specific plan"
       parameters:
@@ -577,7 +577,7 @@ spec:
             type: string
             enum: [starter, professional, enterprise]
         required: [plan]
-    - type: internal
+    - type: client
       name: compare_plans
       description: "Get a feature comparison between two plans"
       parameters:

@@ -64,7 +64,7 @@ spec:
   tools:
     - type: builtin
       name: web_search
-    - type: internal
+    - type: client
       name: lookup_order
       description: "Look up an order by ID"
       parameters:
@@ -117,7 +117,7 @@ spec:
       name: web_search
     - type: builtin
       name: http_request
-    - type: internal
+    - type: client
       name: save_report
       description: "Save the final research report"
       parameters:
@@ -348,7 +348,7 @@ spec:
       name: transfer_to_demo
       agent: demo-agent
       description: "Transfer to product demo agent"
-    - type: internal
+    - type: client
       name: score_lead
       description: "Score lead quality"
       parameters:

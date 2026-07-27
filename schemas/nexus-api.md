@@ -917,7 +917,7 @@ can author knowledge bases declaratively.
 |--------|------|-------------|
 | GET | `/v1/rag/pipelines` | List pipelines (store seeded from `config/rag/*.rag.yaml`). |
 | GET | `/v1/rag/pipelines/{name}` | Get one. |
-| POST | `/v1/rag/pipelines` | Create; body validated via `RAGPipelineLoader.spec_from_raw` (422 on malformed). |
+| POST | `/v1/rag/pipelines` | Create; body validated via `spec_from_raw` (astromesh/rag/loader.py) (422 on malformed). |
 | PUT | `/v1/rag/pipelines/{name}` | Update; `metadata.name` must equal the path (400 otherwise). |
 | DELETE | `/v1/rag/pipelines/{name}` | Delete. |
 
