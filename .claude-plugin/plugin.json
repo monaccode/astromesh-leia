@@ -1,6 +1,6 @@
 {
   "name": "astromesh-leia",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Natural-language interface for creating, deploying, and managing AI agents on astromesh-nexus clusters. From business idea to deployed WhatsApp agent in minutes.",
   "author": {
     "name": "Juan Carlos Romero",

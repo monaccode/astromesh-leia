@@ -199,6 +199,23 @@ spec:
 | `api_key` | No | Inline API key — avoid; keep secrets out of YAML. |
 | `parameters` | No | Sampling parameters (`temperature`, `top_p`, `max_tokens`, …) passed through to the provider. |
 
+#### Which keys each source consumes (astromesh core v0.36.0+)
+
+`parameters` and `timeout` are honored by **all** wired sources — until v0.36.0
+several branches accepted them in the schema and then silently dropped them, so
+a `temperature` or `timeout` set in YAML could have no effect. That is fixed:
+
+| Key | `ollama` | `openai_compat` | `litellm` |
+|-----|----------|-----------------|-----------|
+| `parameters.temperature` / `top_p` / `max_tokens` | ✅ (routed into ollama's nested `options`; `max_tokens`→`num_predict`) | ✅ | ✅ |
+| `parameters.presence_penalty` / `frequency_penalty` | ⚠️ warns — not on ollama's native surface | ✅ | ✅ |
+| `timeout` | ✅ | ✅ (fixed v0.35.1) | ✅ |
+| `endpoint` | ✅ | ✅ | ⚠️ ignored — litellm routes on the model prefix |
+
+A model block that declares a key its source ignores now logs a `WARNING`
+naming the source and the key, instead of dropping it in silence. Declare only
+what the chosen source consumes.
+
 If a `source: litellm` candidate is configured but the `litellm` package isn't installed on the node, the runtime skips **only that candidate** and logs a warning — startup does not fail.
 
 **Role vocabulary** — each pattern requests these roles; any role not defined under `roles` falls back to `default`:
@@ -267,7 +284,13 @@ Controls how the agent processes tasks and uses tools.
 
 ## spec.tools (optional)
 
-Array of tool definitions. Each tool must have a `type` field. Three types are supported:
+Array of tool definitions. Each tool must have a `type` field. Only **three**
+tool types can be loaded from an agent YAML file: `builtin`, `agent`, and
+`client`. Any other `type` value (`internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`,
+`webhook`, `rag`) is **not loadable from YAML** — the runtime logs a `WARNING`
+naming the agent, the tool and the unsupported type, and skips the tool (it is
+never registered, never reaches the model). From astromesh core 1.0 an
+unsupported type becomes a hard error. Do not author agents with those types.
 
 ### Type: builtin
 
@@ -290,53 +313,27 @@ Delegates to another deployed agent as a tool.
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
 | `agent` | string | REQUIRED | -- | `metadata.name` of the target agent. Must be deployed in the same namespace. |
 | `description` | string | optional | target agent's `spec.identity.description` | Override description for the tool. |
-| `parameters` | object | optional | -- | JSON Schema defining the input parameters for the agent tool call. |
+| `parameters` | object | optional | -- | Input parameters. Accepts the shorthand `{param: {type, description}}` (the runtime normalizes it into valid JSON Schema) or a full JSON Schema object. |
 | `context_transform` | string | optional | -- | Jinja2 template to transform context before passing to the sub-agent. |
 | `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, period_seconds: int}`. |
 
-### Type: internal
+### Type: client (astromesh core v0.35.0+)
 
-Custom tools with inline logic defined by JSON Schema parameters. The runtime generates the tool interface; the agent's LLM decides when to call it.
+A tool the runtime **announces to the model but never executes**. The point of
+the call is the call itself — "show this chart", "open this form" — and what it
+means is the consumer's business, not the runtime's. When the model calls a
+`client` tool the runtime returns `{"ok": true}` without running anything; the
+call is delivered live to the consumer through the streaming `tool_call` /
+`tool_result` events (see *Streaming contract* below) and recorded afterwards in
+the run's `steps` (`action` / `action_input`). With nobody listening a `client`
+tool is a silent no-op — that is correct, not a bug.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `type` | string | REQUIRED | -- | Must be `"internal"`. |
+| `type` | string | REQUIRED | -- | Must be `"client"`. |
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | -- | Description of what the tool does. |
-| `parameters` | object | REQUIRED | -- | JSON Schema object defining the tool's input parameters. |
-
-### Type: mcp_stdio / mcp_sse / mcp_http
-
-Connect the agent to an external **MCP (Model Context Protocol) server** so its tools become callable by the agent's LLM. Pick the transport that matches the server: `mcp_stdio` (spawns a local process), `mcp_sse` (Server-Sent Events endpoint), or `mcp_http` (streamable HTTP endpoint).
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | One of `mcp_stdio`, `mcp_sse`, `mcp_http`. |
-| `name` | string | REQUIRED | Logical name for the MCP connection. |
-| `config` | object | REQUIRED | Transport config. For `mcp_stdio`: `{command, args, env}`. For `mcp_sse`/`mcp_http`: `{url, headers}`. |
-
-### Type: webhook
-
-Calls an external HTTP endpoint as a tool.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | Must be `"webhook"`. |
-| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | What the webhook does. |
-| `config` | object | REQUIRED | `{url, method, headers}`. |
-| `parameters` | object | optional | JSON Schema for the request payload. |
-
-### Type: rag
-
-Exposes a retrieval-augmented-generation knowledge source as a tool the LLM can query.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | REQUIRED | Must be `"rag"`. |
-| `name` | string | REQUIRED | Tool name as exposed to the LLM. |
-| `description` | string | REQUIRED | What knowledge the source contains. |
-| `config` | object | REQUIRED | RAG source config (collection / index + retrieval settings). |
+| `description` | string | REQUIRED | -- | What the call means to the consumer. |
+| `parameters` | object | optional | -- | Input parameters. Shorthand `{param: {type, description}}` is normalized into valid JSON Schema before it reaches the model — required, because a strict provider rejects the whole request on an invalid schema. |
 
 > Common per-tool fields apply to every type: `rate_limit` (`{max_calls, period_seconds}`), `requires_approval` (bool), and `timeout_seconds`.
 
@@ -352,7 +349,7 @@ tools:
     name: lookup_inventory
     agent: inventory-agent
     description: "Check product availability and pricing"
-  - type: internal
+  - type: client
     name: score_lead
     description: "Score a lead from 0-100 based on qualification criteria"
     parameters:
@@ -541,7 +538,7 @@ spec:
     timeout_seconds: 30
 
   tools:
-    - type: internal
+    - type: client
       name: score_lead
       description: "Score a lead from 0-100 based on qualification criteria"
       parameters:
@@ -621,3 +618,37 @@ spec:
     execution:
       dry_run: false
 ```
+
+---
+
+## Streaming contract & usage (astromesh core v0.34.0 / v0.36.0)
+
+A run is observable while it happens. `AgentRuntime.run()` accepts an `on_event`
+callback and `/v1/ws/agent/{name}` streams the same events over WebSocket:
+
+```
+status → (token | tool_call | tool_result)* → done | error
+```
+
+- `token` — one whole model completion (per-iteration reasoning under ReAct; NOT the final answer).
+- `tool_call` — `{id, name, arguments}`, emitted **before** the tool runs. For a `client` tool this event *is* the delivery.
+- `tool_result` — `{id, ok}`, after the tool returns. A `client` tool always reports `ok: true`.
+- `done` — `{answer, session_id, usage}`.
+
+### usage.by_model (v0.36.0)
+
+`done.usage` and the `/run` response carry per-model attribution — a single run
+routinely touches several models (multi-model patterns, per-role routing,
+provider fallback), so the flat `usage.model` has no correct value there.
+
+```
+usage = {
+  tokens_in, tokens_out,            # totals (flat, kept for compatibility)
+  model,                            # first model seen — legacy
+  by_model: [ { provider, model, role, calls, tokens_in, tokens_out, cost } ]
+}
+```
+
+`by_model` is the authoritative breakdown; sort is by descending consumption.
+There is no cost/credits economics here beyond the provider `cost` estimate —
+tenant billing lives in the nexus hub, not the core run response.
