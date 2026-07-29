@@ -4,7 +4,7 @@
 [![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
 [![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Version](https://img.shields.io/badge/version-0.4.0-green.svg)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.4.0)
+[![Version](https://img.shields.io/badge/version-0.5.0-green.svg)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.5.0)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet.svg)](https://claude.com/claude-code)
 
 A Claude Code plugin that provides a natural-language interface for creating, deploying, and managing AI agents on astromesh-nexus clusters. Named after Leia, a lemon beagle, this plugin takes you from business idea to deployed WhatsApp agent in minutes -- no Kubernetes expertise required.
@@ -53,7 +53,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.4.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.5.0.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -120,6 +120,7 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
+| 0.5.x | 0.3.x | 0.29 – 0.38.x |
 | 0.4.x | 0.3.x | 0.29 – 0.36.x |
 | 0.2.x | 0.3.x | 0.18 – 0.28.9 |
 | 0.1.x | 0.1.x | 0.18+ |

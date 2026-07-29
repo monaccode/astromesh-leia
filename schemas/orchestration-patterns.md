@@ -13,6 +13,25 @@ This document describes the six orchestration patterns available for astromesh a
 | `supervisor` | Coordinating multiple specialized sub-agents | A supervisor agent delegates tasks to specialized child agents, reviews their output, and synthesizes the final response. | Project management agent delegating to design, engineering, and QA agents. |
 | `swarm` | Dynamic, peer-to-peer agent collaboration | Agents hand off conversations to each other based on context. No central coordinator; each agent decides when to transfer. | Sales team: greeter -> qualifier -> technical-demo -> closer. |
 
+### A pattern is not a chain (astromesh core v0.38.1+)
+
+A pattern decides how **one** agent reasons internally. `spec.chain` decides which
+**other** agents fire when it finishes. They are orthogonal and compose freely: a
+`react` agent can declare a chain, and so can a `supervisor` one.
+
+`chain` is not a valid value for `spec.orchestration.pattern` — the six above are
+the only ones. When a user describes "and then it should…", that is `spec.chain`
+(see `schemas/astromesh-v1-agent.md`), not a pattern choice.
+
+Two neighbouring patterns are easy to reach for by mistake:
+
+- **`pipeline`** moves a value through stages *inside a single agent*, with one
+  model call per stage. Use it when the stages are steps of one job.
+- **`swarm`** hands the *conversation* from one agent to another, and the target
+  is chosen by the model at runtime. Use it when a human is being passed along.
+- **`spec.chain`** fires other agents after this one is done, on conditions you
+  declare, and the routing is deterministic and inspectable before it runs.
+
 ### Per-role models (astromesh v0.29.0+)
 
 Each pattern requests one or more **named roles** at its decision points, and an agent can bind a different model — and source (local `ollama` or cloud `litellm`) — to each role via `spec.model.default` + `roles`. See `schemas/astromesh-v1-agent.md` for the full schema. Roles per pattern:

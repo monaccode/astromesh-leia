@@ -112,6 +112,31 @@ kubectl exec <pod-name> -n <tenant-namespace> -- env | grep WHATSAPP
 - If either is empty or missing, the webhook won't work.
 - Also check if the webhook URL is externally reachable (if the user provides an ngrok or public URL).
 
+### 9. Chain Declarations (astromesh core v0.38.1+)
+
+Only relevant when an agent declares `spec.chain`. Two failure modes, and neither
+looks like a chain problem at first glance:
+
+**The node will not start at all.** A chain naming an agent that does not exist,
+a cycle (`A → B → A`), or a nesting deeper than `max_depth` are refused at
+boot, not at run time. If a node crash-loops right after a chained agent was
+deployed, read the startup logs — the message names the offending path in full.
+The fix is to deploy the missing target first, or to break the cycle.
+
+**The chain deploys and silently never fires.** `spec.chain` needs the node at
+core **v0.38.1+**. Older runtimes ignore unknown `spec` keys, so nothing errors:
+the agent answers normally and no link ever runs. Check the runtime version with
+`GET /v1/health` before looking anywhere else. This is the expected state on
+Nexus's managed pool today, which runs core v0.36.0.
+
+To confirm what a node actually compiled, call `GET /v1/agents/<name>/chain` — it
+returns the expanded graph without executing anything. A `404` means the node
+does not see a chain on that agent. If a link is not firing on a version that
+does support chains, run the agent and read the `chain.links` array in the
+response: a link that did not fire is listed with `status: skipped` and a
+`reason`, which distinguishes "the condition was false" from "something upstream
+stopped".
+
 ## Output Format
 
 After running the checks, present:
