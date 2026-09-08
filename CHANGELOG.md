@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-29
+
+Synced Leia's knowledge to astromesh **core v0.38.1**, teaching the plugin
+**agent chaining** (`spec.chain`) and **structured output** (`spec.output_schema`)
+— and, just as importantly, when *not* to reach for them and how to tell a user
+their chain will silently do nothing.
+
+### Added
+
+- **`schemas/astromesh-v1-agent.md`: `spec.output_schema`.** The shorthand and
+  full-JSON-Schema forms, what it adds to the run response (`data` and
+  `data_error` alongside an untouched `answer`), that a validation failure does
+  not abort the run, and the validator's supported-vs-ignored keyword table —
+  authoring a schema whose correctness rests on an ignored keyword is a silent
+  trap, so the list is explicit.
+- **`schemas/astromesh-v1-agent.md`: `spec.chain`.** Full field reference for
+  `mode`, `max_depth` and each `on_complete` entry, plus the rules that are
+  easiest to get wrong: every matching rule fires (it is not if/elif), rules
+  without `when` do not count as a match for `default`, and under `mode: parallel`
+  no link can read a sibling. Documents that authoring mistakes — a missing
+  target agent, a cycle, an exceeded `max_depth` — stop the node from booting
+  rather than failing mid-run, and covers the `chain` block in the run response
+  plus `GET /v1/agents/{name}/chain`.
+- **`agents/leia-architect.md`: step 4, structured output and chaining.** When to
+  offer each (and when not to: an agent that only talks to a human does not need
+  a schema, and a chain is not a sophistication upgrade), the requirement that
+  every agent named in `on_complete` be deployed *first*, `sequential` as the
+  default, and `on_error: continue` for optional side effects.
+- **`agents/leia-doctor.md`: check 9, chain declarations.** The two failure modes
+  a chain produces — a node that crash-loops at boot with the offending path in
+  the logs, and a chain that deploys and silently never fires on an older runtime
+  — plus using `GET /v1/agents/<name>/chain` and the response's `chain.links`
+  array to tell "the condition was false" from "something upstream stopped".
+
+### Changed
+
+- **`agents/leia-architect.md`: `chain` is no longer listed as a non-existent
+  pattern.** Step 3 previously read "There is no `single`/`chain`/`router`/
+  `parallel`" — accurate about orchestration patterns, and now actively
+  misleading, since `spec.chain` is a real top-level section. The line now
+  disambiguates: a pattern decides how one agent reasons, a chain decides which
+  other agents fire when it finishes.
+- **`schemas/orchestration-patterns.md`: "A pattern is not a chain".** New
+  section separating `spec.chain` from the two patterns closest to it —
+  `pipeline` (stages inside one agent) and `swarm` (the model hands the
+  conversation off at runtime) — against a chain's declarative, inspectable,
+  deterministic routing.
+- **README compatibility row:** Leia 0.5.x ↔ astromesh-nexus 0.3.x ↔ astromesh
+  core 0.29–0.38.x.
+
+### Notes
+
+- **The version gate is the point of this release.** `spec.chain` and
+  `spec.output_schema` need a node at core **v0.38.1+**, and older runtimes do
+  not error on them — unknown `spec` keys are ignored, so the agent deploys,
+  answers normally, and never chains, with nothing in the logs to explain it.
+  Nexus compounds this: its spec validation accepts `spec.chain` without
+  complaint while its managed runtime pool currently runs core **v0.36.0**. Both
+  the architect and the doctor are instructed to check `GET /v1/health` and to
+  say plainly whether they verified the version, rather than implying chaining is
+  live when it is not.
+
 ## [0.4.0] - 2026-07-27
 
 Synced Leia's knowledge to astromesh **core v0.36.0** (from v0.29.0), consolidating the knowledge-sync roadmap from v0.29 through v0.36 so the architect generates correct manifests and the operator understands current control planes and streaming semantics.

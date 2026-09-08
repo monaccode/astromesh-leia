@@ -282,6 +282,195 @@ Controls how the agent processes tasks and uses tools.
 
 ---
 
+## spec.output_schema (optional) — astromesh core v0.38.1+
+
+Declares the shape of the agent's structured output. The runtime asks the model
+for it through the prompt, parses it out of the answer, validates it, and places
+it in `result.data` alongside the prose `answer`.
+
+Two shapes are accepted, and both mean the same thing:
+
+```yaml
+# shorthand — the same one tool `parameters` use
+output_schema:
+  score:  {type: integer}
+  urgent: {type: boolean}
+
+# or full JSON Schema, kept verbatim
+output_schema:
+  type: object
+  properties:
+    score:  {type: integer}
+    urgent: {type: boolean}
+  required: [score]
+```
+
+**What it changes in the run response:** `answer` is left untouched, prose and
+all — nothing that reads it today breaks. Two keys are *added*: `data` (the
+validated object, or `null`) and `data_error` (a string describing why parsing
+or validation failed, or `null`). An agent without `output_schema` gets neither
+key.
+
+**A validation failure does not abort the run.** `data` becomes `null`,
+`data_error` carries the detail, and the answer is returned normally. Retrying
+the model because it emitted bad JSON is not implemented.
+
+**Validator coverage.** The runtime uses a purpose-built validator with no
+external dependency, so it understands a documented subset:
+
+| Supported | Ignored silently |
+|---|---|
+| `type` (`object`, `string`, `integer`, `number`, `boolean`, `array`, `null`), `properties`, `required`, `enum`, `items` | `allOf`, `anyOf`, `oneOf`, `not`, `$ref`, `patternProperties`, `additionalProperties`, `format`, `minimum`, `maximum`, `minLength`, `maxLength`, `pattern`, `minItems`, `maxItems`, `uniqueItems` |
+
+Do not author an `output_schema` whose correctness depends on an ignored
+keyword — it will validate as if the keyword were not there. One rule that *is*
+enforced: `true` does not pass as an `integer`.
+
+**Why it matters:** it is the prerequisite for trustworthy `spec.chain`
+conditions. Without it, a `when` can only match on free prose.
+
+---
+
+## spec.chain (optional) — astromesh core v0.38.1+
+
+Declares which other agents to fire when this one finishes, and under which
+conditions. The runtime compiles the declaration into a workflow when it boots.
+
+**`chain` is NOT an orchestration pattern.** `spec.orchestration.pattern` still
+takes one of the six pattern names and `chain` is not among them. This is a
+separate, top-level section.
+
+```yaml
+spec:
+  output_schema:
+    score: {type: integer}
+
+  chain:
+    mode: sequential        # sequential | parallel   (default: sequential)
+    max_depth: 5            # default: 5
+
+    on_complete:
+      - agent: email-composer
+        when: "{{ output.data.score > 7 }}"
+        input: "{{ output.answer }}"        # default: "{{ output.answer }}"
+        retry:
+          max_attempts: 3
+          backoff: exponential              # fixed | exponential
+          initial_delay_seconds: 2
+        timeout_seconds: 30
+        on_error: continue                  # stop (default) | continue | <agent>
+
+      - agent: crm-logger                   # no `when` = always fires
+
+      - agent: human-triage
+        default: true                       # only if no `when` matched
+```
+
+### Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `mode` | string | optional | `sequential` | `sequential` runs the links one after another; `parallel` runs them at once. |
+| `max_depth` | integer | optional | `5` | How deep chains may nest before the runtime refuses to start. |
+| `on_complete` | array | REQUIRED | — | The links. Must not be empty. |
+
+Each entry of `on_complete`:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `agent` | string | REQUIRED | — | Name of the agent to fire. It must exist, or the runtime will not start. |
+| `when` | string | optional | — | Jinja condition. Fires when it renders `true`, `1` or `yes`. Omit it to fire always. |
+| `input` | string | optional | `{{ output.answer }}` | What the link receives. |
+| `default` | boolean | optional | `false` | Fires only if no `when` in this chain matched. Cannot be combined with `when`. |
+| `retry` | object | optional | — | `max_attempts`, `backoff` (`fixed`/`exponential`), `initial_delay_seconds`. |
+| `timeout_seconds` | integer | optional | — | Wall-clock ceiling for this link. |
+| `on_error` | string | optional | stop | `continue` records the failure and carries on; an agent name jumps there; omitted stops the chain. |
+
+### Rules that are easy to get wrong
+
+- **Every matching rule fires, not just the first.** This is not an if/elif
+  cascade. With `score = 2` in the example above, `email-composer` does not
+  fire, `crm-logger` does (it has no `when`), and `human-triage` does too —
+  because no `when` matched.
+- **Rules without `when` do not count as a match** for the purposes of `default`.
+- **At most one `default` rule**, and it cannot carry a `when`.
+- **Under `mode: parallel`, every guard is evaluated before any link starts**, so
+  a `when` referencing a sibling would always be false. The runtime rejects that
+  at startup instead of letting it fail quietly — use `sequential` when one link
+  needs to see another's result.
+
+### Context available in `when` and `input`
+
+| Variable | Contents |
+|---|---|
+| `output.answer` | Prose answer of the immediately preceding agent |
+| `output.data` | Its validated `output_schema` object, or `None` |
+| `output.steps` | Its orchestration steps |
+| `trigger` | Original payload: `query`, `session_id`, `context` |
+| `steps` | Outputs of links already executed, by name |
+| `when` | Boolean result of each guard already evaluated, by step name |
+
+`output` always refers to the **immediately preceding agent**, not the one that
+started the chain. In `A → B → C`, the `when` in B's chain sees B's output.
+
+### Failure modes to design around
+
+Authoring mistakes are caught **when the runtime starts**, not mid-run: a cycle,
+an exceeded `max_depth`, or a link naming an agent that does not exist all
+prevent the node from booting, with the offending path in the message. A chain
+that references an agent you have not deployed yet will take the whole node
+down — deploy the targets first.
+
+Conditions in a chain are evaluated strictly: a `when` that references a field
+that does not exist fails that link with an explicit error instead of quietly
+evaluating to false.
+
+### What the run response gains
+
+`POST /v1/agents/{name}/run` adds a `chain` block next to the usual keys. The
+`answer` stays the **invoked agent's** answer, so existing consumers are
+unaffected; the links appear alongside it.
+
+```json
+{
+  "answer": "Lead qualified 8/10...",
+  "data": {"score": 8},
+  "chain": {
+    "run_id": "wf-9c2...",
+    "status": "completed",
+    "mode": "sequential",
+    "links": [
+      {"agent": "email-composer", "depth": 1, "via": null,
+       "status": "success", "answer": "Sent to ana@acme.com"}
+    ]
+  }
+}
+```
+
+`chain.status` is `completed`, `partial` (errors but the chain continued) or
+`failed`. Each link is `success`, `error` (with `error`) or `skipped` (with
+`reason`: `condition_false`, `cycle`, `max_depth`, `upstream_stopped`). Links
+that did not fire are listed too, so "why wasn't the email sent?" is answerable
+from the response alone.
+
+`GET /v1/agents/{name}/chain` returns the expanded graph without running
+anything — useful to confirm a deployed chain resolves the way you expect.
+
+### Runtime version gate — read before emitting a chain
+
+`spec.chain` and `spec.output_schema` need the node at **astromesh core
+v0.38.1+**. Older runtimes do **not** error on them: unknown `spec` keys are
+ignored, so the agent deploys, answers normally, and simply never chains —
+silently.
+
+That matters for Nexus specifically. Nexus's spec validation is permissive and
+accepts `spec.chain` without complaint, but its managed runtime pool currently
+runs **core v0.36.0**. A chain published there today will be stored, injected,
+and ignored. Confirm the target node's version (`GET /v1/health`) before
+promising a user that chaining will happen.
+
+---
+
 ## spec.tools (optional)
 
 Array of tool definitions. Each tool must have a `type` field. Only **three**
