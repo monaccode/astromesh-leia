@@ -1,6 +1,8 @@
 # Orchestration Patterns Reference
 
-This document describes the six orchestration patterns available for astromesh agents. The architect subagent uses this reference to select the right pattern for each use case.
+This document describes the seven orchestration patterns available for astromesh agents (synced to **astromesh core v0.68.0**). The architect subagent uses this reference to select the right pattern for each use case.
+
+Since core **v0.65.0** an unknown `spec.orchestration.pattern` is an `AgentConfigError` — the agent does not load (it used to fall back to `react` silently). An explicit `pattern: null` is `react`.
 
 ## Pattern Overview
 
@@ -9,9 +11,30 @@ This document describes the six orchestration patterns available for astromesh a
 | `react` | General-purpose conversational agents | Reason-Act-Observe loop: the LLM reasons about what to do, calls a tool, observes the result, and repeats. | Customer support bot answering questions and looking up orders. |
 | `plan_and_execute` | Complex multi-step tasks requiring upfront planning | LLM generates a step-by-step plan first, then executes each step sequentially, revising the plan if needed. | Research assistant that gathers data from multiple sources and synthesizes a report. |
 | `parallel_fan_out` | Tasks where multiple independent sub-tasks can run simultaneously | Splits the task into independent sub-tasks, executes them in parallel, then aggregates results. | Competitive analysis agent querying 5 competitor APIs simultaneously. |
-| `pipeline` | Sequential data transformation workflows | Passes output from one stage as input to the next in a fixed sequence. Each stage has a defined role. | Content pipeline: draft -> fact-check -> edit -> format -> publish. |
-| `supervisor` | Coordinating multiple specialized sub-agents | A supervisor agent delegates tasks to specialized child agents, reviews their output, and synthesizes the final response. | Project management agent delegating to design, engineering, and QA agents. |
-| `swarm` | Dynamic, peer-to-peer agent collaboration | Agents hand off conversations to each other based on context. No central coordinator; each agent decides when to transfer. | Sales team: greeter -> qualifier -> technical-demo -> closer. |
+| `pipeline` | Sequential data transformation workflows | Passes output from one stage as input to the next in a fixed sequence of named stages (`orchestration.stages`, core v0.65.0+). | Content pipeline: draft -> fact-check -> edit -> format. |
+| `supervisor` | Coordinating multiple specialized sub-agents | A coordinator that **only** delegates to its workers — the agent's `type: agent` tools — and answers with what they returned. | Project management agent delegating to design, engineering, and QA agents. |
+| `swarm` | *(avoid in 0.68 — see below)* | A single-model loop that may emit a JSON "handoff"; in the 0.68 runtime the handoff invokes no agent. | — |
+| `glyph` | Deterministic multi-tool procedures (core v0.39.0+) | The plan is a Glyph **program**: the model writes it (expensive) or `spec.program` fixes it ahead of time (zero planning calls). | Fixed lookup chain: find customer -> list devices -> check warranty for each. |
+
+### Conversation awareness (core v0.64.0 / v0.65.0)
+
+Which patterns see the conversation history and the per-turn `prompts.context`:
+
+| Pattern | History (as messages) | `prompts.context` separated for caching | Tool-result budget (v0.66.0) |
+|---|---|---|---|
+| `react` | yes | yes | yes |
+| `glyph` | yes | yes | no — programs get full data |
+| `plan_and_execute` | planner and synthesizer (v0.65.0+); each step runs its own tool loop **without** history | yes | yes |
+| `parallel_fan_out` | the decomposer and synthesizer (v0.65.0+); subtasks without history | yes | yes |
+| `pipeline` | **first stage only** (v0.65.0+) | yes | yes |
+| `supervisor` | yes (rewritten on native tools in v0.65.0) | yes | yes |
+| `swarm` | **no** — sees only the current query | no — appended to the system prompt, with a load-time warning | no |
+
+Before v0.65.0, `plan_and_execute`, `pipeline` and `parallel_fan_out` did not see
+the conversation at all; before v0.64.0 history only reached the model when the
+system prompt rendered `memory.conversation`. For a conversational agent (WhatsApp,
+chat) on a v0.65.0+ node any pattern except `swarm` keeps context; on older nodes,
+use `react`.
 
 ### A pattern is not a chain (astromesh core v0.38.1+)
 
@@ -19,7 +42,7 @@ A pattern decides how **one** agent reasons internally. `spec.chain` decides whi
 **other** agents fire when it finishes. They are orthogonal and compose freely: a
 `react` agent can declare a chain, and so can a `supervisor` one.
 
-`chain` is not a valid value for `spec.orchestration.pattern` — the six above are
+`chain` is not a valid value for `spec.orchestration.pattern` — the seven above are
 the only ones. When a user describes "and then it should…", that is `spec.chain`
 (see `schemas/astromesh-v1-agent.md`), not a pattern choice.
 
@@ -27,8 +50,9 @@ Two neighbouring patterns are easy to reach for by mistake:
 
 - **`pipeline`** moves a value through stages *inside a single agent*, with one
   model call per stage. Use it when the stages are steps of one job.
-- **`swarm`** hands the *conversation* from one agent to another, and the target
-  is chosen by the model at runtime. Use it when a human is being passed along.
+- **`swarm`** is *meant* to hand the conversation from one agent to another at
+  runtime, but in core 0.68 the handoff invokes nobody (see the `swarm` section).
+  To pass a human along, use `react` with `type: agent` tools.
 - **`spec.chain`** fires other agents after this one is done, on conditions you
   declare, and the routing is deterministic and inspectable before it runs.
 
@@ -44,6 +68,7 @@ Each pattern requests one or more **named roles** at its decision points, and an
 | `pipeline` | `stage:<name>` per stage (default: `analyze`, `process`, `synthesize`) |
 | `supervisor` | `supervisor` |
 | `swarm` | `reasoner` |
+| `glyph` | `reasoner` (writes the program), `default` (narration, `ask`) |
 
 Any role an agent doesn't define falls back to `default`. This is what lets a `plan_and_execute` agent plan with a frontier cloud model and execute with a cheap local one.
 
@@ -106,16 +131,18 @@ spec:
 
 ### Description
 
-A two-phase pattern:
-1. **Planning phase:** The LLM generates a structured plan with numbered steps.
-2. **Execution phase:** Each step is executed sequentially. After each step, the LLM can revise the remaining plan based on results.
+A three-role pattern:
+1. **Planning (`planner`):** the LLM writes a plan — capped at **6 steps** (core 0.68).
+2. **Execution (`worker`):** each step runs the same tool loop as `react` (tool results go back to the model), without the conversation history.
+3. **Synthesis (`synthesizer`):** the final answer from the step results.
+
+Since core v0.65.0 the planner and the synthesizer receive the conversation history and `prompts.context`, so it works for chat agents. There is no re-planning mid-run.
 
 ### When to Use
 
 - Complex tasks requiring 5+ steps.
 - Research or analysis tasks.
 - When you need an audit trail of the reasoning process.
-- When tasks may need dynamic re-planning.
 
 ### When NOT to Use
 
@@ -151,9 +178,9 @@ spec:
 
 ### Performance Characteristics
 
-- **Latency per turn:** 3-20+ LLM calls (plan + N execution steps).
+- **Latency per turn:** plan + up to 6 steps (each a tool loop) + synthesis.
 - **Token usage:** High; full plan is carried in context.
-- **Best max_iterations:** 15-30 for research tasks.
+- **max_iterations:** bounds each step's tool loop, not the whole run — 5-10 is plenty.
 
 ---
 
@@ -161,7 +188,7 @@ spec:
 
 ### Description
 
-Splits a task into independent sub-tasks, executes them in parallel across multiple LLM calls or tool invocations, then aggregates the results into a single response.
+Splits a task into independent sub-tasks (`planner`, capped at **4 subtasks**), runs them concurrently — each one a full tool loop (`worker`) — then aggregates the results (`synthesizer`). If one subtask fails, the others are cancelled (core v0.65.0+). The decomposer and synthesizer see the conversation history since v0.65.0; before that, `fan_out` also discarded tool calls.
 
 ### When to Use
 
@@ -203,7 +230,7 @@ spec:
 
 - **Latency per turn:** Wall-clock time of the slowest sub-task (not the sum).
 - **Token usage:** High; N parallel calls each consume tokens.
-- **Best max_iterations:** 3-5 (fan-out + aggregation).
+- **max_iterations:** bounds each subtask's tool loop; 3-5.
 
 ---
 
@@ -211,7 +238,9 @@ spec:
 
 ### Description
 
-A fixed sequence of stages where each stage's output becomes the next stage's input. Each stage can use different tools or prompts. The pipeline proceeds linearly from start to finish.
+A fixed sequence of **named stages** where each stage's answer becomes the next stage's input. Stages are declared in `spec.orchestration.stages` (core v0.65.0+): 2 to 6 names of 1–40 characters; without it the stages are `analyze`, `process`, `synthesize`. An out-of-range `stages` stops the agent from loading.
+
+What a stage gets is its **name** and the previous stage's output — there is no per-stage prompt (`prompts.templates` are not read by the pattern). So the stage names must be self-explanatory (`draft`, `fact_check`, `edit`), and the system prompt should describe what each stage does. Each stage runs the `react` tool loop with all the agent's tools, on the model role `stage:<name>` — bind a different model per stage with `spec.model.roles`. Only the first stage sees the conversation history.
 
 ### When to Use
 
@@ -231,14 +260,15 @@ A fixed sequence of stages where each stage's output becomes the next stage's in
 spec:
   orchestration:
     pattern: pipeline
-    max_iterations: 5       # One iteration per stage
+    stages: [draft, fact_check, edit, format]   # core v0.65.0+
+    max_iterations: 4       # per stage: bounds that stage's tool loop
     timeout_seconds: 180
   prompts:
-    templates:
-      stage_draft: "Draft a blog post about {{topic}}. Write 500-800 words."
-      stage_factcheck: "Fact-check the following article. Flag any claims that need citations:\n\n{{draft}}"
-      stage_edit: "Edit the following article for clarity, grammar, and tone:\n\n{{factchecked}}"
-      stage_format: "Format the following article in Markdown with proper headings and a TL;DR section:\n\n{{edited}}"
+    system: |
+      You write blog posts in four stages. In "draft" write 500-800 words on the
+      requested topic. In "fact_check" flag claims that need citations (use
+      web_search). In "edit" improve clarity, grammar and tone. In "format" return
+      Markdown with headings and a TL;DR.
   tools:
     - type: builtin
       name: web_search
@@ -246,9 +276,9 @@ spec:
 
 ### Performance Characteristics
 
-- **Latency per turn:** N LLM calls where N = number of stages.
+- **Latency per turn:** at least one LLM call per stage (more if a stage uses tools).
 - **Token usage:** High; each stage processes the full document.
-- **Best max_iterations:** Equal to the number of pipeline stages.
+- **max_iterations:** per stage, not total.
 
 ---
 
@@ -256,7 +286,7 @@ spec:
 
 ### Description
 
-A central supervisor agent receives the task, delegates sub-tasks to specialized child agents, reviews their output, and synthesizes the final response. The supervisor controls the workflow and can re-delegate or request revisions.
+A coordinator (model role `supervisor`) that **only delegates**. Since core v0.65.0 its workers are exactly the agent's `type: agent` tools: those are the only tools offered to the model, and a call to anything else is not executed. With no `type: agent` tool the agent does not load (`AgentConfigError`). It sees the conversation history. Any `builtin`/`client`/`integration` tool on a supervisor is dead weight — put it on a worker.
 
 ### When to Use
 
@@ -309,80 +339,67 @@ spec:
 
 ## swarm
 
-### Description
+### Status in core 0.68 — do not emit for new agents
 
-A decentralized pattern where agents hand off conversations to each other based on context. There is no central coordinator. Each agent decides autonomously whether to respond or transfer the conversation to a more appropriate peer.
+The pattern exists and the name is valid, but read the runtime before choosing it:
+
+- The engine builds `SwarmPattern()` with **no peer agents** (`runtime/engine.py`, `_build_pattern`), so when the model answers with a handoff JSON (`{"handoff": "<agent>", "context": "…"}`) the runtime only relabels the loop — **no other agent is invoked**. The same model keeps answering.
+- It sends the model **only the current query** — no conversation history — so a WhatsApp/chat agent on `swarm` forgets everything between messages.
+- `prompts.context` is not separated (appended to the system prompt, with a load-time warning), and the v0.66.0 tool-result budget does not apply.
+- Core v0.65.0 rewrote `plan_and_execute`, `pipeline`, `parallel_fan_out` and `supervisor`; `swarm` was explicitly left unchanged.
+
+### What to use instead
+
+| The user wants… | Emit |
+|---|---|
+| A conversation passed from a greeter to a specialist | `react` (or `supervisor`) with one `type: agent` tool per specialist |
+| Something to happen *after* this agent finishes | `spec.chain` (core v0.38.1+) |
+| A coordinator that only routes | `supervisor` |
+
+If a user explicitly asks for `swarm`, emit it but tell them the three limits above.
+
+---
+
+## glyph
+
+### Description (core v0.39.0+)
+
+The agent's plan is a **program** in the Glyph action language, executed by the runtime instead of a tool-calling loop. Two modes:
+
+1. **Model-written** (`pattern: glyph`, no `spec.program`): the model writes a program each run (role `reasoner`); `orchestration.max_repairs` (default 2) caps recompiles. **Measured at +164% to +2839% the cost of ReAct** — output tokens dominate. Do not use this mode for production.
+2. **Fixed** (`spec.program`): written once (typically by running mode 1 once and parameterizing the result with `context.<field>`), reviewed by a human, compiled against the agent's tools when it loads, and run on every request with **zero planning calls**. This is where Glyph pays off.
+
+`orchestration.narrate` (default `true`) adds a model call that turns the program's result into prose; set `narrate: false` when the agent feeds another agent (`spec.chain`, an API consumer) rather than a person.
 
 ### When to Use
 
-- Sales funnels (greeter -> qualifier -> demo -> closer).
-- Multi-department routing (support -> billing -> technical).
-- Scenarios where conversation context determines which agent should respond.
-- When you want agents to specialize without centralized orchestration overhead.
+- A deterministic procedure of 5+ tool calls where each result feeds the next, with independent branches or a "do this for every item" step.
+- The agent feeds another system, not a human (`narrate: false`).
+- The program can be fixed in `spec.program`.
 
 ### When NOT to Use
 
-- When you need a single agent to maintain full context of the interaction.
-- When strict workflow ordering is required (use `pipeline`).
-- When a supervisor needs to review all sub-agent output before responding.
-- Small teams (2 agents) where supervisor is simpler.
+- One or two tools — the grammar overhead dominates.
+- The agent must see the data before deciding what to do next.
+- Conversational agents — the fixed cost is paid every turn.
+- Reasoning models (huge output writing code).
+- The node lacks the `glyph` extra (`astromesh-glyph` is not on PyPI yet). Without it, no-program agents fall back to `react` with a warning; agents **with** `spec.program` do not load.
 
 ### YAML Example
 
 ```yaml
-# Agent 1: Greeter (entry point)
 spec:
   orchestration:
-    pattern: swarm
-    max_iterations: 5
-    timeout_seconds: 30
-  prompts:
-    system: |
-      You are the greeter for Acme Corp. Welcome users and understand their intent.
-      If they want to buy, transfer to sales-qualifier.
-      If they need help, transfer to support-agent.
-  tools:
-    - type: agent
-      name: transfer_to_sales
-      agent: sales-qualifier
-      description: "Transfer to sales qualification"
-    - type: agent
-      name: transfer_to_support
-      agent: support-agent
-      description: "Transfer to customer support"
-
-# Agent 2: Sales Qualifier
-spec:
-  orchestration:
-    pattern: swarm
-    max_iterations: 10
-    timeout_seconds: 30
-  prompts:
-    system: |
-      You qualify sales leads. Ask about company size, budget, and timeline.
-      If qualified, transfer to demo-agent.
-      If not qualified, politely redirect to self-serve resources.
-  tools:
-    - type: agent
-      name: transfer_to_demo
-      agent: demo-agent
-      description: "Transfer to product demo agent"
-    - type: client
-      name: score_lead
-      description: "Score lead quality"
-      parameters:
-        type: object
-        properties:
-          score:
-            type: integer
-        required: [score]
+    pattern: glyph
+    narrate: false
+  program: |
+    customer = find_customer(email=context.email)
+    devices  = list_devices(customer_id=customer.id)
+    return {customer, devices}
+  # tools: must register find_customer and list_devices under exactly those names
 ```
 
-### Performance Characteristics
-
-- **Latency per turn:** 1-3 LLM calls per agent in the chain.
-- **Token usage:** Moderate per agent; context resets on handoff (only transfer context is passed).
-- **Best max_iterations:** 3-10 per agent (each agent has its own iteration budget).
+Calls in the program use the **registered** tool names — for `integration` and `api` tools that is `<slug>_<action>` (e.g. `praxis_buscar_records`), not the bare action. `spec.program` with any other pattern, or a program that does not compile against the declared tools, stops the agent from loading.
 
 ---
 
@@ -407,12 +424,17 @@ START: What kind of task is this?
   |               YES --> parallel_fan_out
   |               NO  --> react (with multiple tool calls)
   |
+  |-- Is it a fixed, deterministic procedure of 5+ tool calls, feeding a system
+  |   rather than a person, on a node with the glyph extra?
+  |     YES --> glyph + spec.program (narrate: false)
+  |
   |-- Does it involve multiple specialized agents?
-  |     YES --> Do agents need a central coordinator for quality control?
+  |     YES --> Should the coordinator ONLY route to them?
   |               YES --> supervisor
-  |               NO  --> Is it a conversation routing / handoff scenario?
-  |                         YES --> swarm
-  |                         NO  --> supervisor
+  |               NO  --> react with one `type: agent` tool per specialist
+  |
+  |-- Should other agents run AFTER this one finishes?
+  |     YES --> spec.chain (not a pattern; combine with any of the above)
   |
   |-- Default --> react
 ```
@@ -421,6 +443,7 @@ START: What kind of task is this?
 - When in doubt, use `react`. It handles most cases well.
 - Use `pipeline` only when you can define the exact stages upfront.
 - Use `parallel_fan_out` when latency matters and sub-tasks are independent.
-- Use `supervisor` when you have 2-5 specialized agents that need coordination.
-- Use `swarm` when agents should hand off conversations dynamically.
+- Use `supervisor` when you have 2-5 specialized agents and the coordinator only routes.
+- Do not emit `swarm` for new agents in core 0.68 (no real handoff, no history).
+- Use `glyph` only with a fixed `spec.program`, never as a model-written default.
 - Use `plan_and_execute` for complex research or analysis tasks.
