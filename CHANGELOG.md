@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-11
+
+Sincroniza el conocimiento de Leia con astromesh **core v0.68.0** (desde v0.38.1).
+El eje del release son los **knowledge bundles** (OKF) y que el architect emita
+sólo lo que el runtime 0.68 realmente carga: la fuente de verdad pasa a ser
+`_build_agent` en `engine.py`, no sólo el `agent.schema.json`, porque en 0.68 los
+dos no coinciden.
+
+### Added
+
+- **`schemas/astromesh-v1-agent.md`: `spec.knowledge`.** `pipeline` + `top_k`
+  (RAGPipeline, core 0.30) y `bundle` (core **0.68.0**): un directorio Open
+  Knowledge Format que el agente navega con `kb_index`, `kb_read` y `kb_find`
+  —registradas solas, no se declaran—, la variable `bundle_index`, las señales
+  de confianza (`trust`, `stale`, `warnings`) y cuándo conviene pipeline vs bundle.
+- **Tipos de tool `integration` (0.37), `api` (0.57) y `mcp` (0.58)**, con sus
+  claves, `confirm` (0.42) como subconjunto de `actions`, `mode: propose` (0.59),
+  colisiones de nombre y la tabla de claves que lee cada tipo (lo demás se
+  ignora con un warning desde 0.43).
+- **`spec.prefetch` (0.51), `spec.program` y `pattern: glyph` (0.39),
+  `prompts.context` y caché de prompts (0.64), `context_window` (0.64),
+  `orchestration.stages` (0.65), `max_tool_result_tokens` /
+  `tools[].max_result_tokens` (0.66), `narrate`, `max_repairs`** y el bloque de
+  modelo completo (`source`, `providerRef`, `litellm`, `centinela`, `timeout`).
+- **`agents/leia-architect.md`: paso de knowledge.** Pipeline para corpus grande
+  o desestructurado, bundle para conocimiento curado donde importan confianza y
+  frescura; el bundle exige core 0.68+; `{{ bundle_index }}` va en
+  `prompts.system` y lo que cambia por query en `prompts.context`. La salida
+  ahora declara el gate de versión más alto del manifiesto.
+- **`schemas/orchestration-patterns.md`:** `glyph`, tabla de qué patrón ve el
+  historial y el contexto del turno (0.64/0.65), topes de `plan_and_execute`
+  (6 pasos) y `parallel_fan_out` (4 subtareas).
+
+### Changed
+
+- **Seis tipos de tool cargables, no tres.** Se reemplaza "sólo `builtin`,
+  `agent` y `client` cargan desde YAML". Se avisa que el schema del editor 0.68
+  todavía marca `integration`/`api`/`mcp`, `spec.prefetch` y
+  `orchestration.role_map` aunque el runtime los carga.
+- **`supervisor`** requiere tools `type: agent` (sus trabajadores) o el agente no
+  carga; **`pipeline`** se configura con `stages`, no con `prompts.templates`.
+- **`swarm` queda marcado para no emitir:** en 0.68 el handoff no invoca a ningún
+  agente y el patrón no ve el historial. Para pasar a una persona de un agente a
+  otro, `react` con tools `type: agent`.
+- **Compatibilidad del README:** Leia 0.6.x ↔ astromesh core 0.29–0.68.x. La
+  columna Nexus sigue en 0.3.x, con nota: las operaciones de Leia contra Nexus no
+  cambiaron en este release.
+
+### Fixed
+
+- Las variables `{{agent_name}}`, `{{current_date}}` y `{{tools_list}}` no las
+  provee el runtime y renderizan vacío; se documentan las reales (`memory`,
+  `knowledge`, `prefetch`, `bundle_index` y las claves del contexto del llamador).
+- Memoria: sólo `redis` (con `connection.url`) construye memoria conversacional;
+  `in_memory`/`sqlite`/`postgres` corren sin memoria. `memory.semantic`/`episodic`
+  nunca se construyen. `max_messages` no lo lee el runtime.
+- `permissions.allowed_actions` no es una lista de verbos (`respond`,
+  `use_tools`…) y hoy no filtra nada; `filesystem`/`network`/`execution` no se
+  aplican.
+- Guardrails: `max_length` sólo actúa sobre la entrada (en `output` no hace
+  nada), `content_filter` reemplaza con `[FILTERED]` sin leer `action`.
+- `requires_approval` y `timeout_seconds` por tool, y `rate_limit` en una tool
+  `agent`, se ignoran; `spec.chain` junto a `confirm` impide que el agente cargue.
+- `metadata.name` tiene que empezar con una letra (regex del schema del editor).
+
+### Notes
+
+- **Gate de versión.** Un nodo más viejo que el campo ignora la clave en
+  silencio. Lo más nuevo que el architect puede emitir es `knowledge.bundle`
+  (0.68.0); confirmá la versión con `GET /v1/health` antes de prometerlo.
+- **Las plantillas validan** contra el `agent.schema.json` de 0.68 sin cambios,
+  pero usan `memory.conversational.backend: in_memory` (corren sin memoria) y
+  `max_length` en `output` (no hace nada). Quedan como están en este release; el
+  architect ya sabe no copiar esas dos cosas.
+- **Nexus:** las operaciones de Leia siguen apuntando a Nexus 0.3.x; la
+  sincronización con Nexus 0.26.x (header de auth) no es parte de este release.
+
 ## [0.5.0] - 2026-07-29
 
 Synced Leia's knowledge to astromesh **core v0.38.1**, teaching the plugin
