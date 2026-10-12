@@ -309,7 +309,7 @@ Controls how the agent processes tasks and uses tools.
 |-------|------|----------|---------|-------------|
 | `pattern` | string | optional | `"react"` | Orchestration pattern. One of: `react`, `plan_and_execute`, `parallel_fan_out`, `pipeline`, `supervisor`, `swarm`, `glyph` (core v0.39.0+). See `schemas/orchestration-patterns.md`. |
 | `max_iterations` | integer | optional | `10` | Maximum reasoning/tool-call loops. In `plan_and_execute`, `pipeline`, `parallel_fan_out` it bounds **each** step/stage/subtask's tool loop, not the whole run. |
-| `timeout_seconds` | integer | optional | -- | Maximum wall-clock seconds for a run. (`timeout` is a deprecated alias — emit `timeout_seconds`.) |
+| `timeout_seconds` | integer | optional | -- | Accepted by the editor schema, **not read by the 0.68 runtime** — there is no run-level timeout. Per-call limits come from the model block's `timeout`. (`timeout` here is its deprecated alias, equally unread.) |
 | `max_tool_result_tokens` | integer | optional | `8000` | **core v0.66.0+.** Default cap, in tokens, on each tool result entering the conversation. Overridden per tool by `tools[].max_result_tokens`. A value that is not an integer > 0 warns at load and uses the default (`engine.py:1235-1246`). See *Tool result budget* below. |
 | `stages` | string array | optional | `[analyze, process, synthesize]` | **core v0.65.0+, `pattern: pipeline` only.** 2 to 6 stage names of 1–40 characters. Each name also becomes the model role `stage:<name>`. Anything else out of range → the agent does not load (`engine.py:1366-1376`). |
 | `narrate` | boolean | optional | `true` | **`pattern: glyph` only.** `false` returns the program's result as JSON and skips the second model call that turns it into prose — use it when the agent feeds another agent, not a person. |
@@ -319,7 +319,7 @@ Controls how the agent processes tasks and uses tools.
 **Validation rules:**
 - `pattern` must be one of the seven values. Since core v0.65.0 an unknown pattern is an `AgentConfigError` — **the agent does not load** (before, it fell back to `react` silently). An explicit `pattern: null` is `react`.
 - `pattern: supervisor` needs at least one `type: agent` tool (its workers) or the agent does not load (core v0.65.0+, `engine.py:1354-1365`).
-- `max_iterations`, `timeout_seconds`, `max_tool_result_tokens` must be integers ≥ 1.
+- `max_iterations` and `max_tool_result_tokens` must be integers ≥ 1.
 
 ---
 
@@ -613,7 +613,7 @@ Pre-packaged tools provided by the astromesh runtime.
 | `type` | string | REQUIRED | -- | Must be `"builtin"`. |
 | `name` | string | REQUIRED | -- | Built-in tool name (e.g., `web_search`, `calculator`, `datetime`, `http_request`). Its description and parameters come from the tool itself. |
 | `config` | object | optional | `{}` | Tool-specific configuration. |
-| `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, period_seconds: int}`. |
+| `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, window_seconds: int}` (defaults 10 and 60, `core/tools.py:409-422`; `period_seconds` is ignored). |
 
 ### Type: agent
 
@@ -648,7 +648,7 @@ tool is a silent no-op — that is correct, not a bug.
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
 | `description` | string | REQUIRED | -- | What the call means to the consumer. |
 | `parameters` | object | optional | -- | Input parameters. Shorthand `{param: {type, description}}` is normalized into valid JSON Schema before it reaches the model — required, because a strict provider rejects the whole request on an invalid schema. A `parameters` that is not a mapping skips just this tool with a warning. |
-| `rate_limit` | object | optional | -- | `{max_calls, period_seconds}`. |
+| `rate_limit` | object | optional | -- | `{max_calls, window_seconds}`. |
 
 ### Type: integration (astromesh core v0.37.0+)
 
@@ -773,7 +773,7 @@ tools:
     name: web_search
     rate_limit:
       max_calls: 10
-      period_seconds: 60
+      window_seconds: 60
   - type: agent
     name: lookup_inventory
     agent: inventory-agent
@@ -967,19 +967,21 @@ spec:
 
 Input and output validation rules. Both `input` and `output` are arrays of rule objects.
 
+**Not enforced in core 0.68.** The runtime stores `spec.guardrails` (`engine.py:1263, 1585`) but never runs it: `GuardrailsEngine` has no caller in `astromesh/runtime` (nor anywhere in `astromesh/`). Every rule below describes what `core/guardrails.py` *would* do; none affects input or output today. Do not present guardrails as PII protection or a length cap.
+
 ### Rule types
 
 | Rule Type | Applicable To | Fields | Description |
 |-----------|--------------|--------|-------------|
-| `pii_detection` | input, output | `action` | Masks emails, phone numbers, SSNs, credit cards when `action: redact` (the default). Any other action leaves the text untouched. |
-| `max_length` | **input only** | `max_chars` (integer, default 10000) | Truncates the incoming message. **Field is `max_chars`** — `limit` is ignored. In `output` it is a no-op (the output pass has no `max_length` branch). |
-| `topic_filter` | **input only** | `blocked_topics` (string array), `action` | `action: block` rejects a message containing a blocked topic; anything else (default `warn`) lets it through. |
-| `cost_limit` | output | `max_tokens_per_turn` (integer, default 500) | Truncates the answer to roughly that many tokens (word-based estimate). No USD field exists. |
-| `content_filter` | output | `blocked_patterns` (regex string array) | Replaces every match with `[FILTERED]`, case-insensitive. `action` is not read. |
+| `pii_detection` | input, output | `action` | Would mask emails, phone numbers, SSNs, credit cards when `action: redact` (the default); any other action would leave the text untouched. |
+| `max_length` | **input only** | `max_chars` (integer, default 10000) | Would truncate the incoming message. **Field is `max_chars`** — `limit` is ignored. In `output` it would be a no-op (the output pass has no `max_length` branch). |
+| `topic_filter` | **input only** | `blocked_topics` (string array), `action` | Would reject (`action: block`) a message containing a blocked topic; anything else (default `warn`) would let it through. |
+| `cost_limit` | output | `max_tokens_per_turn` (integer, default 500) | Would truncate the answer to roughly that many tokens (word-based estimate). No USD field exists. |
+| `content_filter` | output | `blocked_patterns` (regex string array) | Would replace every match with `[FILTERED]`, case-insensitive. `action` is not read. |
 
-> Source: `astromesh/core/guardrails.py`. The editor schema lists `redact`, `block`, `warn`, `log` as actions and `prompt_injection` as an example type, but `prompt_injection` is **not implemented** — don't rely on it. To cap answer length on WhatsApp, use `cost_limit` and say it in the prompt; an output `max_length` does nothing.
+> Source: `astromesh/core/guardrails.py`. The editor schema lists `redact`, `block`, `warn`, `log` as actions and `prompt_injection` as an example type, but `prompt_injection` is **not implemented** — don't rely on it. There is no runtime cap on answer length: use the prompt plus `max_tokens` on the model block.
 
-**Example:**
+**Example** (inert in 0.68):
 ```yaml
 guardrails:
   input:
@@ -1002,11 +1004,11 @@ guardrails:
 
 ## spec.permissions (optional)
 
-Accepted by the editor schema; **mostly not enforced** by the 0.68 runtime. Do not present any of it as a security boundary.
+Accepted by the editor schema; **not enforced** by the 0.68 runtime. Do not present any of it as a security boundary.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `allowed_actions` | string array | optional | -- | Passed to `ToolRegistry.get_tool_schemas` as a filter, but it only hides tools that declare their own `permissions` list, and **no tool loaded from YAML declares one** (`core/tools.py:350-358`) — so today it filters nothing. It is *not* a list of `respond`/`use_tools`/`delegate`/`escalate` verbs. If you set it anyway, list tool names (incl. `kb_index`, `kb_read`, `kb_find` with a bundle) so it stays correct when enforcement lands. |
+| `allowed_actions` | string array | optional | -- | Passed to `ToolRegistry.get_tool_schemas` as a filter, but it only hides tools that declare their own `permissions` list, and **no tool loaded from YAML declares one** (`core/tools.py:350-358`) — so today it filters nothing. It is *not* a list of `respond`/`use_tools`/`delegate`/`escalate` verbs. |
 | `filesystem` | object | optional | `{}` | Filesystem access controls. |
 | `filesystem.read` | string array | optional | `[]` | Glob patterns for allowed read paths. |
 | `filesystem.write` | string array | optional | `[]` | Glob patterns for allowed write paths. |
@@ -1116,7 +1118,6 @@ spec:
   orchestration:
     pattern: react
     max_iterations: 10
-    timeout_seconds: 30
     max_tool_result_tokens: 4000      # core v0.66.0+
 
   tools:
@@ -1157,28 +1158,12 @@ spec:
       max_turns: 20
       ttl: 259200
 
-  guardrails:
-    input:
-      - type: pii_detection
-        action: redact
-      - type: max_length
-        max_chars: 4096
-      - type: topic_filter
-        blocked_topics: [politics, religion, competitors]
-        action: warn
-    output:
-      - type: content_filter
-        blocked_patterns:
-          - "(?i)\\b(kill yourself|kys)\\b"
-      - type: cost_limit
-        max_tokens_per_turn: 400
-
   output_schema:                      # core v0.38.1+: adds `data` to the run response
     score: {type: integer}
     qualified: {type: boolean}
 ```
 
-Deliberately absent: `permissions` (not enforced in 0.68), `memory.semantic` /
+Deliberately absent: `guardrails` and `orchestration.timeout_seconds` (neither applied by the 0.68 runtime), `permissions` (not enforced in 0.68), `memory.semantic` /
 `episodic` (never built), `prompts.templates` (no pattern reads them), and a
 `spec.channels` block (does not exist — WhatsApp is wired at deploy time).
 

@@ -64,8 +64,18 @@ dos no coinciden.
 - `permissions.allowed_actions` no es una lista de verbos (`respond`,
   `use_tools`…) y hoy no filtra nada; `filesystem`/`network`/`execution` no se
   aplican.
-- Guardrails: `max_length` sólo actúa sobre la entrada (en `output` no hace
-  nada), `content_filter` reemplaza con `[FILTERED]` sin leer `action`.
+- **Guardrails: el runtime 0.68 no los aplica.** Guarda `spec.guardrails` pero
+  nadie llama a `GuardrailsEngine` (`apply_input`/`apply_output` no tienen
+  llamador en `astromesh/`). Se documentan como inertes: ni protección de PII ni
+  tope de largo. El largo de la respuesta se acota con `max_tokens` del modelo y
+  el prompt.
+- `orchestration.timeout_seconds` (y su alias `timeout`) no lo lee el runtime
+  0.68: no hay timeout por corrida; sólo cuenta el `timeout` HTTP del bloque de
+  modelo. Se quitó de los ejemplos.
+- `rate_limit` usa `{max_calls, window_seconds}` (defaults 10 y 60);
+  `period_seconds` se ignora.
+- El architect escribe `agents/<nombre>.agent.yaml`: el runtime sólo carga
+  `*.agent.yaml`. El doctor ya no dice que el pool de Nexus corre core v0.36.0.
 - `requires_approval` y `timeout_seconds` por tool, y `rate_limit` en una tool
   `agent`, se ignoran; `spec.chain` junto a `confirm` impide que el agente cargue.
 - `metadata.name` tiene que empezar con una letra (regex del schema del editor).
@@ -76,9 +86,10 @@ dos no coinciden.
   silencio. Lo más nuevo que el architect puede emitir es `knowledge.bundle`
   (0.68.0); confirmá la versión con `GET /v1/health` antes de prometerlo.
 - **Las plantillas validan** contra el `agent.schema.json` de 0.68 sin cambios,
-  pero usan `memory.conversational.backend: in_memory` (corren sin memoria) y
-  `max_length` en `output` (no hace nada). Quedan como están en este release; el
-  architect ya sabe no copiar esas dos cosas.
+  pero usan `memory.conversational.backend: in_memory` (corren sin memoria),
+  un bloque `guardrails` que es inerte entero en 0.68 y
+  `orchestration.timeout_seconds`, que no se lee. Quedan como están en este
+  release; el architect ya sabe no copiar esas cosas.
 - **Nexus:** las operaciones de Leia siguen apuntando a Nexus 0.3.x; la
   sincronización con Nexus 0.26.x (header de auth) no es parte de este release.
 

@@ -2,6 +2,8 @@
 
 This document describes the seven orchestration patterns available for astromesh agents (synced to **astromesh core v0.68.0**). The architect subagent uses this reference to select the right pattern for each use case.
 
+Examples omit `orchestration.timeout_seconds`: the editor schema accepts it but the 0.68 runtime does not read it (no run-level timeout).
+
 Since core **v0.65.0** an unknown `spec.orchestration.pattern` is an `AgentConfigError` — the agent does not load (it used to fall back to `react` silently). An explicit `pattern: null` is `react`.
 
 ## Pattern Overview
@@ -104,7 +106,6 @@ spec:
   orchestration:
     pattern: react
     max_iterations: 10
-    timeout_seconds: 30
   tools:
     - type: builtin
       name: web_search
@@ -157,7 +158,6 @@ spec:
   orchestration:
     pattern: plan_and_execute
     max_iterations: 20
-    timeout_seconds: 120
   tools:
     - type: builtin
       name: web_search
@@ -210,7 +210,6 @@ spec:
   orchestration:
     pattern: parallel_fan_out
     max_iterations: 5
-    timeout_seconds: 60
   tools:
     - type: agent
       name: search_amazon
@@ -262,7 +261,6 @@ spec:
     pattern: pipeline
     stages: [draft, fact_check, edit, format]   # core v0.65.0+
     max_iterations: 4       # per stage: bounds that stage's tool loop
-    timeout_seconds: 180
   prompts:
     system: |
       You write blog posts in four stages. In "draft" write 500-800 words on the
@@ -308,7 +306,6 @@ spec:
   orchestration:
     pattern: supervisor
     max_iterations: 15
-    timeout_seconds: 120
   prompts:
     system: |
       You are a project manager agent. You coordinate work between specialized agents.

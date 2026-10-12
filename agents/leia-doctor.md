@@ -126,8 +126,9 @@ The fix is to deploy the missing target first, or to break the cycle.
 **The chain deploys and silently never fires.** `spec.chain` needs the node at
 core **v0.38.1+**. Older runtimes ignore unknown `spec` keys, so nothing errors:
 the agent answers normally and no link ever runs. Check the runtime version with
-`GET /v1/health` before looking anywhere else. This is the expected state on
-Nexus's managed pool today, which runs core v0.36.0.
+`GET /v1/health` before looking anywhere else — it is the usual cause on any
+node older than v0.38.1 (Nexus accepts `spec.chain` whatever its pool runs; as
+of 2026-10-11 the managed pool runs core 0.68.0, which supports chains).
 
 To confirm what a node actually compiled, call `GET /v1/agents/<name>/chain` — it
 returns the expanded graph without executing anything. A `404` means the node

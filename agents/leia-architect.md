@@ -115,7 +115,7 @@ Produce a complete, valid `astromesh/v1` Agent YAML manifest.
 
 ### 7. Write to File
 
-Write the generated YAML to `agents/<agent-name>.yaml` in the current working directory (or a path specified by the user).
+Write the generated YAML to `agents/<agent-name>.agent.yaml` (the runtime loads only `*.agent.yaml`, `engine.py:518`) in the current working directory (or a path specified by the user).
 
 ## Smart Defaults
 
@@ -123,14 +123,13 @@ Apply these defaults based on the channel:
 
 | Setting | WhatsApp | Web |
 |---|---|---|
-| `timeout` | `30s` | `120s` |
+| model `timeout` (HTTP, per call) | `30` | `120` |
 | `max_tokens` | `1024` | `2048` |
 | `temperature` | `0.7` | `0.7` |
-| `max_length` (input guardrail) | `4096` chars | `4096` chars |
-| `cost_limit.max_tokens_per_turn` (output) | `400` + "keep replies short" in the prompt (WhatsApp ~1600 chars) | `1024` |
+| answer length | `max_tokens` (model) + "keep replies short" in the prompt (WhatsApp ~1600 chars) | `max_tokens` (model) |
 | `memory.conversational.max_turns` | `10` | `20` |
 
-`max_length` only acts on **input**; as an output guardrail it does nothing, so cap answer length with `cost_limit` and the prompt.
+`spec.guardrails` is not enforced in core 0.68 (never applied). Cap length with model `max_tokens` and the prompt; don't emit guardrails unless asked, and then say they are inert. Only the model block's `timeout` is read (`engine.py:420`); `orchestration.timeout_seconds` is not.
 
 ## YAML Generation Rules
 
@@ -138,7 +137,7 @@ Apply these defaults based on the channel:
 2. **System prompt must be specific**, not a placeholder. Write a real, detailed system prompt tailored to the business description, vertical, and channel. Include the business name, what the agent does, tone of voice, boundaries, and any constraints from the channel.
 3. **Use the real section names**: `metadata`, `spec.identity`, `spec.model`, `spec.prompts.system` (+ `spec.prompts.context`), `spec.orchestration`, and as needed `spec.tools`, `spec.prefetch`, `spec.knowledge`, `spec.memory`, `spec.guardrails`, `spec.output_schema`, `spec.chain`, `spec.program`. There is **no** `spec.system_prompt` (it's `spec.prompts.system`), **no** `spec.constraints` (it's `spec.guardrails`) and **no** `spec.channels`. Memory **must be nested**: `spec.memory.conversational.{backend,connection,strategy,max_turns}` — a flat `memory:` block is ignored. The `max_length` guardrail uses `max_chars` (not `limit`). Emit only what core 0.68 actually reads:
    - **Conversational memory that remembers needs `backend: redis` + `connection.url`.** Any other backend (`in_memory`, `sqlite`, `postgres` — the shipped templates use `in_memory`) loads with a warning and the agent runs **without memory**. If the user has no Redis, say plainly that the agent will not remember between messages.
-   - Do **not** emit `memory.semantic` / `memory.episodic` (never built), `permissions` (not enforced; `allowed_actions` is not a `respond`/`use_tools` verb list), `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
+   - Do **not** emit `guardrails` (never applied), `orchestration.timeout_seconds` (not read), `memory.semantic` / `memory.episodic` (never built), `permissions` (not enforced; `allowed_actions` is not a `respond`/`use_tools` verb list), `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
    - No `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}` in prompts — the runtime does not provide them and they render empty. Write names literally.
 4. **Tool types.** Six types load from an agent YAML in core 0.68: `builtin`, `agent`, `client`, `integration` (v0.37.0+), `api` (v0.57.0+), `mcp` (v0.58.0+). Never emit `internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`, `webhook`, or `rag`, and never omit `type` (it defaults to `internal`): the runtime skips them with a WARNING. Each type reads a fixed set of keys (table in `schemas/astromesh-v1-agent.md`); anything else is ignored with a warning — e.g. no `rate_limit` on `agent`, no `description` on `integration`, no `requires_approval`/`timeout_seconds` anywhere.
    - Offer a **`client`** tool when the value is the call itself and no server-side action exists (show a chart, open a form, hand off to the UI): the runtime returns `{"ok": true}` and the arguments reach the live consumer through the streaming `tool_call` event.
