@@ -85,11 +85,12 @@ dos no coinciden.
 - **Gate de versión.** Un nodo más viejo que el campo ignora la clave en
   silencio. Lo más nuevo que el architect puede emitir es `knowledge.bundle`
   (0.68.0); confirmá la versión con `GET /v1/health` antes de prometerlo.
-- **Las plantillas validan** contra el `agent.schema.json` de 0.68 sin cambios,
-  pero usan `memory.conversational.backend: in_memory` (corren sin memoria),
-  un bloque `guardrails` que es inerte entero en 0.68 y
-  `orchestration.timeout_seconds`, que no se lee. Quedan como están en este
-  release; el architect ya sabe no copiar esas cosas.
+- **Las plantillas** siguen validando contra el `agent.schema.json` de 0.68 y
+  ya no enseñan configuración inerte: se quitaron `orchestration.timeout_seconds`
+  y el bloque `guardrails` (queda un comentario), y `backend: in_memory` lleva un
+  comentario que avisa que en 0.68 no hay memoria sin `redis` + `connection.url`.
+  `schemas/whatsapp-config.md` deja de pedir guardrails de PII "siempre" y avisa
+  que el PII no se redacta.
 - **Nexus:** las operaciones de Leia siguen apuntando a Nexus 0.3.x; la
   sincronización con Nexus 0.26.x (header de auth) no es parte de este release.
 

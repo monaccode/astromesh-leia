@@ -194,8 +194,9 @@ spec:
       parameters:
         max_tokens: 1024       # WhatsApp messages have ~4096 char limit; keep responses concise
   orchestration:
-    timeout_seconds: 25        # Leave margin for network + Graph API call
     max_iterations: 5          # Fewer iterations = faster responses
+    # No orchestration.timeout_seconds: the 0.68 runtime does not read it (no run-level
+    # timeout). The model block's `timeout` (HTTP, per call) is the only limit.
 ```
 
 ### Vision Model for Images
@@ -213,22 +214,23 @@ spec:
       model: llama3.2-vision:11b
 ```
 
-### PII Guardrails
+### PII and Guardrails — not enforced in core 0.68
 
-WhatsApp conversations frequently contain personal information. Always enable PII guardrails:
+WhatsApp conversations frequently contain personal information (names, phone
+numbers, addresses). **Do not assume any of it is redacted.** The runtime stores
+`spec.guardrails` but never runs it: `GuardrailsEngine` has no caller in
+`astromesh/runtime`, so a `pii_detection: redact` rule does nothing — the raw
+text reaches the model, the conversational memory and the traces. The same goes
+for `max_length` as a response cap. See `schemas/astromesh-v1-agent.md`,
+*spec.guardrails*.
 
-```yaml
-spec:
-  guardrails:
-    input:
-      - type: pii_detection
-        action: redact         # Redact before storing in memory/logs
-    output:
-      - type: pii_detection
-        action: redact
-      - type: max_length
-        max_chars: 1600        # WhatsApp-friendly response cap (field is max_chars, not limit)
-```
+What to do instead on core 0.68:
+
+- Tell the user plainly that PII is processed and stored as sent; handle
+  retention through the memory `ttl` and the node's own data policies.
+- Keep replies short with the model's `max_tokens` and an explicit instruction in
+  the system prompt (WhatsApp messages cap around 4096 characters; aim far lower).
+- Only emit a `guardrails` block if the user asks for it, and then say it is inert.
 
 ### Memory for Conversation Continuity
 
@@ -238,10 +240,12 @@ WhatsApp users expect the agent to remember context across messages:
 spec:
   memory:
     conversational:
-      backend: redis           # Persistent across pod restarts
+      backend: redis           # Persistent across pod restarts; the only backend 0.68 builds
+      connection:
+        url: redis://redis:6379/0   # REQUIRED: without it the agent runs with no memory
       strategy: sliding_window
       max_turns: 50
-      ttl: 86400               # 24 hours
+      ttl: 86400               # 24 hours (runtime default is 259200 = 72 h)
 ```
 
 ### Recommended Labels
