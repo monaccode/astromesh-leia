@@ -39,13 +39,9 @@ spec:
   orchestration:
     pattern: plan_and_execute
     max_iterations: 8
-    timeout_seconds: 30
   memory:
     conversational:
-      backend: in_memory
+      backend: in_memory  # no memory in 0.68 — use redis + connection.url to persist
       strategy: sliding_window
       max_turns: 20
-  guardrails:
-    output:
-      - type: max_length
-        max_chars: 1600
+  # guardrails: not enforced by core 0.68 — omitted

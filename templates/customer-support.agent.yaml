@@ -36,18 +36,9 @@ spec:
   orchestration:
     pattern: react
     max_iterations: 5
-    timeout_seconds: 30
   memory:
     conversational:
-      backend: in_memory
+      backend: in_memory  # no memory in 0.68 — use redis + connection.url to persist
       strategy: sliding_window
       max_turns: 20
-  guardrails:
-    input:
-      - type: pii_detection
-        action: redact
-    output:
-      - type: pii_detection
-        action: redact
-      - type: max_length
-        max_chars: 1600
+  # guardrails: not enforced by core 0.68 — omitted

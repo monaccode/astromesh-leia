@@ -2,6 +2,13 @@
 
 This document is the authoritative schema reference for `astromesh/v1 Agent` manifests. Subagents (architect, operator, doctor) MUST consult this file when generating or validating agent YAML.
 
+**Synced to astromesh core v0.68.0.** Two sources of truth are cited throughout, and they do not always agree:
+
+- **The editor schema** — `vscode-extension/schemas/agent.schema.json` in the core repo. Validators (VS Code, CI linters) use it.
+- **What the runtime loads** — `AgentRuntime._build_agent` in `astromesh/runtime/engine.py`. This is what actually happens on a node.
+
+Where the runtime reads something the editor schema does not declare (or rejects), this file says so explicitly. When the two disagree, **the runtime wins** for "will it work"; the editor schema only decides whether a linter shows a red squiggle. Version gates are written as "core v0.NN+" — a node older than that ignores the field silently unless stated otherwise.
+
 ## Top-Level Structure
 
 Every agent manifest requires exactly these four top-level keys:
@@ -21,9 +28,9 @@ All four keys are REQUIRED. Any manifest missing one of these is invalid.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | REQUIRED | -- | Unique agent identifier. Must conform to RFC 1123 label: lowercase alphanumeric and hyphens, 1-63 characters, must start and end with alphanumeric. Regex: `[a-z0-9]([a-z0-9\-]{0,61}[a-z0-9])?` |
-| `version` | string | optional | `"0.1.0"` | Semantic version of the agent definition. |
-| `namespace` | string | optional | `"default"` | Kubernetes namespace for deployment. Must already exist in the cluster. |
+| `name` | string | REQUIRED | -- | Unique agent identifier, kebab-case. Editor-schema regex: `^[a-z][a-z0-9-]*[a-z0-9]$` — must **start with a letter** (not a digit), end with a letter or digit, at least 2 characters. Keep it ≤ 63 characters so it is also a valid RFC 1123 label for Kubernetes. |
+| `version` | string | optional | `"0.1.0"` | Semantic version of the agent definition. Editor-schema regex: `^[0-9]+\.[0-9]+\.[0-9]+$` (quote it: `"1.0.0"`). |
+| `namespace` | string | optional | `"default"` | Logical namespace (regex `^[a-z][a-z0-9-]*$`). Informational for the runtime; on Nexus/Kubernetes it must already exist in the cluster. |
 | `labels` | object | optional | `{}` | Key-value string pairs for organizing and selecting agents. Keys and values must be strings. |
 
 **Validation rules:**
@@ -33,9 +40,9 @@ All four keys are REQUIRED. Any manifest missing one of these is invalid.
 
 ---
 
-## spec.identity (REQUIRED)
+## spec.identity (optional, recommended)
 
-Human-readable metadata about the agent. The section itself is required but all fields within are optional.
+Human-readable metadata about the agent. The editor schema requires nothing inside `spec` (no `required` list), and the runtime reads `spec.identity` with a default. Always emit it anyway — `description` is what other agents see when this one is used as a `type: agent` tool.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -45,20 +52,28 @@ Human-readable metadata about the agent. The section itself is required but all 
 
 ---
 
-## spec.model (REQUIRED)
+## spec.model (required in practice)
 
-Configures which LLM(s) the agent uses.
+Configures which LLM(s) the agent uses. The editor schema does not mark it required, but an agent with no model candidate builds a `default` router with zero providers (`engine.py:801-805`) and cannot answer. Always emit one.
 
-### spec.model.primary (REQUIRED)
+### spec.model.primary (the legacy single-router shape)
+
+A **model block** — the same shape is used by `primary`, `fallback`, each `extra` entry and each per-role `candidates` entry (editor schema `$defs/modelConfig`, `additionalProperties: false`, so an unknown key is a schema error).
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `provider` | string | REQUIRED | -- | LLM provider. **Runtime-wired values** (safe to deploy): `ollama`, `openai`, `openai_compat`, `azure_openai`. The schema *also* recognizes `vllm`, `llamacpp`, `huggingface`, `onnx`, but these are **not yet wired in the runtime engine** (deploy logs a warning and they won't serve). To reach a vLLM / llama.cpp / TGI server today, use `openai_compat` with its `endpoint`. |
-| `model` | string | REQUIRED | -- | Model identifier (e.g., `llama3.1:8b`, `gpt-4o`, `qwen2.5:7b`). |
-| `endpoint` | string | optional | provider-dependent | API endpoint URL. Defaults: `http://localhost:11434` for `ollama`, `https://api.openai.com/v1` for `openai`. Required for `openai_compat` and `azure_openai`. |
-| `api_key` | string | optional | -- | API key as a literal string. Mutually exclusive with `api_key_env`. Avoid committing secrets; prefer `api_key_env`. |
-| `api_key_env` | string | optional | provider-dependent | Environment variable name containing the API key. Default: `OPENAI_API_KEY` for `openai` provider. |
-| `timeout` | number | optional | `120` | Request timeout in seconds. |
+| `source` | string | optional | inferred | Adapter that serves the model — **preferred over `provider`** in new agents. One of `ollama`, `openai`, `openai_compat`, `azure_openai`, `litellm`, `centinela`. Omitted, it is inferred: `litellm` when `model` contains `/`, otherwise `openai_compat`. |
+| `provider` | string | optional | -- | Legacy alias of `source`, same values. In the legacy `primary`/`fallback`/`extra` shape a block with **neither** `provider` nor `source` is dropped (`engine.py:699-709`) — always set one of the two there. |
+| `providerRef` | string | optional | -- | Name of an entry in the node's provider registry; the registry supplies `source`/`endpoint`/`api_key`/`contract`, and keys set in the block override it. Accepted by the editor schema since core v0.36.0. |
+| `model` | string | REQUIRED | -- | Model identifier (e.g., `llama3.1:8b`, `gpt-4o`, `qwen2.5:7b`). For `litellm`, the provider-prefixed form (`anthropic/claude-opus-4-8`). |
+| `endpoint` | string (URI) | optional | source-dependent | API endpoint URL. Defaults: `http://localhost:11434` for `ollama`. Required for `openai_compat` and `azure_openai`. Ignored by `litellm` (routes on the model prefix). |
+| `endpoint_name` | string | optional | -- | Named endpoint — `centinela` source only. |
+| `api_key` | string | optional | -- | API key as a literal string. Avoid committing secrets; prefer `api_key_env`. |
+| `api_key_env` | string | optional | -- | Environment variable name containing the API key. |
+| `contract`, `invalid_policy`, `max_retries` | object / string / integer | optional | -- | Label contract, what to do with a response that violates it, and retries — `centinela` source only. |
+| `timeout` | number | optional | `120` | HTTP client timeout in seconds. Raise it for reasoning models with a slow time-to-first-token. |
+| `temperature`, `max_tokens` | number / integer | optional | -- | Top-level shorthand for `parameters.temperature` / `parameters.max_tokens`. |
+| `context_window` | integer | optional | detected | **core v0.64.0+.** Input tokens the model accepts; sizes the conversational-history budget (90% of the window minus system prompt, tool schemas, `prompts.context` and response `max_tokens`). Without it: Ollama's `parameters.num_ctx`, then litellm's model table, else unknown — and with an unknown window history is trimmed only by `max_turns`, with a load-time warning (`engine.py:907-914`). With several candidates the smallest window wins. `parameters.num_ctx` is read but is not in the editor schema's `parameters` list, so prefer `context_window`. Consumed by the runtime for **every** source, not passed to the provider (`engine.py:310-312`). |
 | `parameters` | object | optional | `{}` | Model generation parameters. See below. |
 
 **parameters sub-fields:**
@@ -76,7 +91,7 @@ Configures which LLM(s) the agent uses.
 > `temperature` and `max_tokens` may also be set at the top level of a provider block (shorthand) in addition to nesting them under `parameters`.
 
 **Validation rules:**
-- `provider` must be one of the four allowed values.
+- `source`/`provider` must be one of the six values above. `vllm`, `llamacpp`, `huggingface`, `hf_tgi` and `onnx` are **not** in the 0.68 editor schema — reach a vLLM / llama.cpp / TGI server with `openai_compat` + its `endpoint`.
 - `model` must be a non-empty string.
 - For `openai_compat` and `azure_openai`, `endpoint` is effectively required (no default).
 - `api_key` and `api_key_env` are mutually exclusive; specifying both is an error.
@@ -121,9 +136,9 @@ A map of **additional named providers** registered alongside `primary` and `fall
 |-------|------|-------------|
 | `<slot_name>` | model block | Each key is an arbitrary slot name (e.g. `cheap`, `vision`, `local`); each value is a full provider block with the same shape as `primary`. |
 
-**Validation rules:**
-- `extra` must be a mapping (object). A non-object value is ignored with a warning.
-- The reserved slot names `primary` and `fallback` are **rejected** inside `extra` (they would shadow the canonical slots) and that entry is skipped with a warning.
+**Validation rules (core v0.68.0, `engine.py:697-711`):**
+- `extra` must be a mapping (object); anything else is ignored.
+- Each entry joins the `default` role after `primary` and `fallback`, in declaration order. An entry with neither `provider` nor `source` is **dropped silently** — always set one.
 
 **Example:**
 ```yaml
@@ -188,16 +203,7 @@ spec:
 
 - `default` is REQUIRED whenever this shape is used — it is the `ModelRouter` every unrecognized or unconfigured role falls back to. Each role in `roles` becomes its own independent router (its own circuit breaker), ranked by its own `strategy` (same strategy values as `spec.model.routing`).
 
-**Candidate fields** (each entry in a `candidates` array):
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `source` | No | Provider family: `litellm` (cloud multi-provider — 100+ models via LiteLLM; needs the runtime's optional `litellm` extra installed), `ollama`, or `openai_compat` (aliases `openai`, `azure_openai`). If omitted it is inferred from `model`: a name containing `/` (e.g. `anthropic/claude-opus-4-8`) infers `litellm`; otherwise `openai_compat`. |
-| `model` | Yes | Model name/path. Format depends on `source` (`"llama3.1:8b"` for Ollama, `"anthropic/claude-opus-4-8"` for LiteLLM, `kimi-k2.6` for a Moonshot `openai_compat` candidate). |
-| `endpoint` | No | Override endpoint URL. Defaults vary by `source` (e.g. `http://localhost:11434` for Ollama). |
-| `api_key_env` | No | Env var holding the API key. Prefer this over `api_key`. |
-| `api_key` | No | Inline API key — avoid; keep secrets out of YAML. |
-| `parameters` | No | Sampling parameters (`temperature`, `top_p`, `max_tokens`, …) passed through to the provider. |
+**Candidate fields** (each entry in a `candidates` array): exactly the model block documented under `spec.model.primary` above — `source`/`provider`, `providerRef`, `model`, `endpoint`, `api_key_env`, `timeout`, `temperature`/`max_tokens`, `context_window`, `parameters`, and the `centinela`-only keys. `litellm` needs the runtime's optional `litellm` extra. Each role block takes only `candidates` and `strategy` (editor schema `$defs/roleConfig`); `strategy` defaults to `cost_optimized` (`engine.py:682-695`). The history budget (`context_window`) is computed from the **`default`** role's candidates (`engine.py:903-907`).
 
 #### Which keys each source consumes (astromesh core v0.36.0+)
 
@@ -228,6 +234,7 @@ If a `source: litellm` candidate is configured but the `litellm` package isn't i
 | `pipeline` | `stage:<name>` per configured stage (default stages: `analyze`, `process`, `synthesize`) |
 | `supervisor` | `supervisor` |
 | `swarm` | `reasoner` |
+| *(memory)* `conversational.strategy: summary` | `summarizer` — falls back to `default` (`engine.py:344-346`) |
 
 **Remapping** — `spec.orchestration.role_map` points a pattern's built-in role at one of your own role names without renaming it in `roles`:
 
@@ -241,6 +248,8 @@ spec:
 
 Resolution order for a requested role: `role_map[role]` (if remapped) → resolved name looked up in `spec.model.roles` → `default`.
 
+> `role_map` is read by the runtime (`engine.py:1577`, core v0.29.0+) but is **not declared** in the 0.68 editor schema, whose `orchestration` block has `additionalProperties: false` — a JSON-schema validator will flag it even though it works. Emit it only when the remap is genuinely needed, and say so.
+
 **Backward compatibility:** the legacy `primary` / `fallback` / `extra` / `routing` shape still works unchanged — internally it is normalized into a single `default` role. No migration needed; adopt `default`/`roles` only where you want per-role selection. **Per-role selection requires the deployed runtime at core `v0.29.0+`**; on older nodes emit the legacy `primary`/`fallback` shape instead.
 
 ---
@@ -249,18 +258,45 @@ Resolution order for a requested role: `role_map[role]` (if remapped) → resolv
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `system` | string | optional | `""` | System prompt. Supports Jinja2 template syntax with variables: `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}`, `{{context}}`, `{{memory}}`, and `{{contact_name}}` (the sender's display name on channels that provide it, e.g. WhatsApp — added in astromesh v0.27.0). Guard optional vars: `{% if contact_name %}Address the user as {{ contact_name }}.{% endif %}`. |
-| `templates` | object | optional | `{}` | Named prompt templates. Keys are template names, values are Jinja2 template strings. Referenced in tools and orchestration. |
+| `system` | string | optional | `""` | System prompt, a Jinja2 template (sandboxed since core v0.59.1). Keep it **stable between turns** — see *Prompt caching* below. |
+| `context` | string | optional | `""` | **core v0.64.0+.** Jinja2 template for what changes on every query (RAG `knowledge`, `prefetch`). Rendered per run and placed in front of the **current user message**, so system → tools → history stay a byte-identical, cacheable prefix. The turn stored in memory is the original query, without the context. |
+| `templates` | object | optional | `{}` | Named Jinja2 templates registered per agent (`engine.py:1232-1233`). Not in the 0.68 editor schema (`prompts` has `additionalProperties: false`, so a validator flags it). No orchestration pattern reads them — do **not** use them to define pipeline stages. Rarely worth emitting. |
+
+### Template variables
+
+What the runtime passes to `prompts.system` and `prompts.context` (`engine.py:1733-1739`):
+
+| Variable | Contents |
+|---|---|
+| *caller context keys* | Whatever the caller put in the run's `context`, at top level. On WhatsApp channels: `contact_name` (sender display name, core v0.27.0+). Integrations such as PRAXIS also look at `sender_phone`. Keys starting with `_` are reserved for the runtime. |
+| `memory` | `memory.conversation` (history), `memory.semantic`, `memory.episodic`. |
+| `knowledge` | Chunks retrieved from `spec.knowledge.pipeline` for this query. Per-query → belongs in `prompts.context`. |
+| `prefetch` | `{name: {success, data, metadata, error}}` from `spec.prefetch` (core v0.51.0+). Per-query → belongs in `prompts.context`. |
+| `bundle_index` | **core v0.68.0+.** The root index of `spec.knowledge.bundle` (empty string without a bundle, or if the index cannot be read). **Stable between queries** while the bundle does not change → belongs in `prompts.system`. |
+
+There are **no** built-in `agent_name`, `current_date` or `tools_list` variables: the runtime does not set them and undefined variables render as an empty string (`SilentUndefined`), so `Today is {{current_date}}` renders as `Today is `. Write the agent's name literally, and pass dates through the caller context if needed. Guard optional vars: `{% if contact_name %}Address the user as {{ contact_name }}.{% endif %}`. Guard `prefetch` with `prefetch is defined` if the agent may run on a node older than v0.51.0 — reading an attribute of an undefined variable is not silenced.
+
+### Prompt caching (core v0.64.0+)
+
+The provider's prompt cache only helps if everything before the last message is identical between calls. The runtime enforces the layout `system → tools → history → [glyph grammar] → context + query` and warns at load time when:
+
+- `prompts.system` uses `knowledge`, `prefetch`, `memory.semantic` or `memory.episodic` inside a Jinja block (`{{ }}` / `{% %}`) — move it to `prompts.context` (`engine.py:1219-1225`);
+- `prompts.system` uses `memory.conversation` — the legacy path still works (history is rendered into the system prompt, no messages are sent) but breaks the cache; drop it, history now travels as messages (`engine.py:920-925`);
+- `prompts.context` is set but the pattern does not separate it — only `swarm` in 0.68; there it is appended to the end of the system prompt with no cache gain (`engine.py:1226-1231`).
+
+Do not iterate `memory.conversation` inside `prompts.context` either: the history already travels as messages.
 
 **Example:**
 ```yaml
 prompts:
   system: |
-    You are {{agent_name}}, a helpful assistant.
-    Today is {{current_date}}.
-  templates:
-    greeting: "Hello! I'm {{agent_name}}. How can I help you today?"
-    escalation: "Let me transfer you to a human agent for further assistance."
+    You are Lucia, the sales analyst for Acme. Answer only with the data provided.
+    {% if bundle_index %}Knowledge map (open concepts with kb_read):
+    {{ bundle_index }}{% endif %}
+  context: |
+    {% if knowledge %}RELEVANT DOCUMENTS:
+    {{ knowledge }}{% endif %}
+    {% if prefetch is defined and prefetch.stock and prefetch.stock.success %}CURRENT STOCK: {{ prefetch.stock.data }}{% endif %}
 ```
 
 ---
@@ -271,14 +307,53 @@ Controls how the agent processes tasks and uses tools.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `pattern` | string | optional | `"react"` | Orchestration pattern. One of: `react`, `plan_and_execute`, `parallel_fan_out`, `pipeline`, `supervisor`, `swarm`. See `schemas/orchestration-patterns.md` for details. |
-| `max_iterations` | integer | optional | `10` | Maximum reasoning/action loops before the agent stops. Prevents infinite loops. |
-| `timeout_seconds` | integer | optional | `30` | Maximum wall-clock seconds for a single request. |
+| `pattern` | string | optional | `"react"` | Orchestration pattern. One of: `react`, `plan_and_execute`, `parallel_fan_out`, `pipeline`, `supervisor`, `swarm`, `glyph` (core v0.39.0+). See `schemas/orchestration-patterns.md`. |
+| `max_iterations` | integer | optional | `10` | Maximum reasoning/tool-call loops. In `plan_and_execute`, `pipeline`, `parallel_fan_out` it bounds **each** step/stage/subtask's tool loop, not the whole run. |
+| `timeout_seconds` | integer | optional | -- | Accepted by the editor schema, **not read by the 0.68 runtime** — there is no run-level timeout. Per-call limits come from the model block's `timeout`. (`timeout` here is its deprecated alias, equally unread.) |
+| `max_tool_result_tokens` | integer | optional | `8000` | **core v0.66.0+.** Default cap, in tokens, on each tool result entering the conversation. Overridden per tool by `tools[].max_result_tokens`. A value that is not an integer > 0 warns at load and uses the default (`engine.py:1235-1246`). See *Tool result budget* below. |
+| `stages` | string array | optional | `[analyze, process, synthesize]` | **core v0.65.0+, `pattern: pipeline` only.** 2 to 6 stage names of 1–40 characters. Each name also becomes the model role `stage:<name>`. Anything else out of range → the agent does not load (`engine.py:1366-1376`). |
+| `narrate` | boolean | optional | `true` | **`pattern: glyph` only.** `false` returns the program's result as JSON and skips the second model call that turns it into prose — use it when the agent feeds another agent, not a person. |
+| `max_repairs` | integer | optional | `2` | **`pattern: glyph` only.** Retries when the model-written program does not compile. Ignored with `spec.program`. |
+| `role_map` | object | optional | -- | Remap a pattern's built-in role to one of your role names (see *Remapping* above). Read by the runtime, absent from the editor schema. |
 
 **Validation rules:**
-- `pattern` must be one of the six allowed values.
-- `max_iterations` must be a positive integer, max 100.
-- `timeout_seconds` must be a positive integer, max 300.
+- `pattern` must be one of the seven values. Since core v0.65.0 an unknown pattern is an `AgentConfigError` — **the agent does not load** (before, it fell back to `react` silently). An explicit `pattern: null` is `react`.
+- `pattern: supervisor` needs at least one `type: agent` tool (its workers) or the agent does not load (core v0.65.0+, `engine.py:1354-1365`).
+- `max_iterations` and `max_tool_result_tokens` must be integers ≥ 1.
+
+---
+
+## spec.program (optional) — astromesh core v0.39.0+
+
+A fixed **Glyph** program, written ahead of time. Only valid with
+`orchestration.pattern: glyph`. The runtime compiles it against the agent's
+`tools` when the agent loads, then runs it on every request **without calling
+the model** to plan (the model is called once more to narrate the result unless
+`orchestration.narrate: false`).
+
+```yaml
+spec:
+  orchestration:
+    pattern: glyph
+    narrate: false
+  program: |
+    customer = find_customer(email=context.email)
+    devices  = list_devices(customer_id=customer.id)
+    return {customer, devices}
+```
+
+| Situation | Result |
+|---|---|
+| `program` set and `pattern` is not `glyph` | **Agent does not load** (`engine.py:1302-1306`) |
+| `program` does not compile (unknown tool, syntax) | **Agent does not load**, with line and message |
+| `pattern: glyph` but the node lacks the `glyph` extra, no `program` | Falls back to `react` with a warning |
+| Same, **with** `program` | **Agent does not load** — a fixed program must not silently become a full ReAct run (`engine.py:1312-1326`) |
+
+**Read before choosing Glyph.** As a runtime pattern (the model writing the
+program every run) Glyph was measured at +164% to +2839% the cost of ReAct.
+It pays off only with `spec.program`: written once, reviewed by a human, run
+forever with zero planning calls. The `astromesh-glyph` package is not on PyPI
+yet, so most nodes do not have the extra — confirm before emitting it.
 
 ---
 
@@ -337,7 +412,7 @@ Declares which other agents to fire when this one finishes, and under which
 conditions. The runtime compiles the declaration into a workflow when it boots.
 
 **`chain` is NOT an orchestration pattern.** `spec.orchestration.pattern` still
-takes one of the six pattern names and `chain` is not among them. This is a
+takes one of the seven pattern names and `chain` is not among them. This is a
 separate, top-level section.
 
 ```yaml
@@ -415,6 +490,12 @@ started the chain. In `A → B → C`, the `when` in B's chain sees B's output.
 
 ### Failure modes to design around
 
+**`spec.chain` and `confirm` cannot coexist.** If any tool of the agent declares
+`confirm`, a `spec.chain` on the same agent is a `ValueError` and **the agent does
+not load** (`engine.py:872-878`): a chain step runs as non-human and can never
+confirm, so the pending proposal would wait forever. Split the confirming agent
+from the chained one.
+
 Authoring mistakes are caught **when the runtime starts**, not mid-run: a cycle,
 an exceeded `max_depth`, or a link naming an agent that does not exist all
 prevent the node from booting, with the offending path in the message. A chain
@@ -464,22 +545,64 @@ ignored, so the agent deploys, answers normally, and simply never chains —
 silently.
 
 That matters for Nexus specifically. Nexus's spec validation is permissive and
-accepts `spec.chain` without complaint, but its managed runtime pool currently
-runs **core v0.36.0**. A chain published there today will be stored, injected,
-and ignored. Confirm the target node's version (`GET /v1/health`) before
-promising a user that chaining will happen.
+accepts `spec.chain` without complaint, whatever core version its managed
+runtime pool runs. A chain published to a pool older than v0.38.1 is stored,
+injected, and ignored. Confirm the target node's version (`GET /v1/health`)
+before promising a user that chaining will happen. The same rule applies to
+every version-gated field in this file.
 
 ---
 
 ## spec.tools (optional)
 
-Array of tool definitions. Each tool must have a `type` field. Only **three**
-tool types can be loaded from an agent YAML file: `builtin`, `agent`, and
-`client`. Any other `type` value (`internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`,
-`webhook`, `rag`) is **not loadable from YAML** — the runtime logs a `WARNING`
-naming the agent, the tool and the unsupported type, and skips the tool (it is
-never registered, never reaches the model). From astromesh core 1.0 an
-unsupported type becomes a hard error. Do not author agents with those types.
+Array of tool definitions. Each tool must have `name` and `type`. **Six** tool
+types load from an agent YAML in core v0.68.0 (`engine.py:990-1205`):
+
+| `type` | Since | What it is |
+|---|---|---|
+| `builtin` | — | A tool shipped with the runtime (`web_search`, `http_request`, …). |
+| `agent` | — | Another agent, callable as a tool. |
+| `client` | v0.35.0 | Announced to the model, executed by whoever is listening. |
+| `integration` | v0.37.0 | Actions of a catalog integration (`praxis`, `gmail`, `google_sheets`, …). |
+| `api` | v0.57.0 | A tenant's own HTTP API, declared inline. |
+| `mcp` | v0.58.0 | A tenant's MCP server, with a snapshot of its tools inline. |
+
+Any other `type` (`internal` — also the default when `type` is omitted —,
+`mcp_stdio`/`mcp_sse`/`mcp_http`, `webhook`, `rag`) is **not loadable**: the
+runtime logs a `WARNING` naming the agent, the tool and the unsupported type,
+and skips the tool (never registered, never reaches the model). From core 1.0
+an unsupported type becomes a hard error. Do not author agents with those types.
+
+> **Editor-schema lag.** The 0.68 `agent.schema.json` still enumerates only
+> `builtin`, `agent`, `client` for `tools[].type`. A JSON-schema validator will
+> flag `integration`, `api` and `mcp` even though the runtime loads them. Trust
+> the runtime; mention the lint warning to the user if they validate in VS Code.
+
+### Keys each type reads — everything else is ignored with a WARNING
+
+Since core v0.43.0 a key the runtime does not read for that type is reported at
+load time ("declara la tool … con claves que este runtime no lee") and ignored
+(`engine.py:189-228`). Common to every type: `type`, `name`, `confirm`,
+`max_result_tokens`.
+
+| `type` | Type-specific keys |
+|---|---|
+| `builtin` | `config`, `rate_limit` |
+| `agent` | `agent`, `description`, `parameters`, `context_transform` |
+| `client` | `description`, `parameters`, `rate_limit` |
+| `integration` | `connection`, `actions`, `rate_limit` (no `description` — the integration manifest's is used) |
+| `api` | `connection`, `description`, `auth`, `operations`, `rate_limit` |
+| `mcp` | `connection`, `path`, `auth`, `tools`, `rate_limit` |
+
+So `rate_limit` on an `agent` tool, `description` on an `integration`, and
+`requires_approval` / `timeout_seconds` on any tool do nothing.
+
+### Common keys
+
+| Field | Type | Applies to | Description |
+|-------|------|-----------|-------------|
+| `max_result_tokens` | integer | all types | **core v0.66.0+.** Cap, in tokens, on this tool's result when it enters the conversation. For `integration`, `api` and `mcp` it applies to every tool that definition registers. Falls back to `orchestration.max_tool_result_tokens`, then `8000`. |
+| `confirm` | string array | `integration` only | **core v0.42.0+.** Actions that do not run until the person confirms in the next turn (see *Confirmation gate* below). On any other type it is ignored with a warning. |
 
 ### Type: builtin
 
@@ -488,9 +611,9 @@ Pre-packaged tools provided by the astromesh runtime.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `type` | string | REQUIRED | -- | Must be `"builtin"`. |
-| `name` | string | REQUIRED | -- | Built-in tool name (e.g., `web_search`, `calculator`, `datetime`, `http_request`). |
+| `name` | string | REQUIRED | -- | Built-in tool name (e.g., `web_search`, `calculator`, `datetime`, `http_request`). Its description and parameters come from the tool itself. |
 | `config` | object | optional | `{}` | Tool-specific configuration. |
-| `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, period_seconds: int}`. |
+| `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, window_seconds: int}` (defaults 10 and 60, `core/tools.py:409-422`; `period_seconds` is ignored). |
 
 ### Type: agent
 
@@ -500,11 +623,13 @@ Delegates to another deployed agent as a tool.
 |-------|------|----------|---------|-------------|
 | `type` | string | REQUIRED | -- | Must be `"agent"`. |
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
-| `agent` | string | REQUIRED | -- | `metadata.name` of the target agent. Must be deployed in the same namespace. |
-| `description` | string | optional | target agent's `spec.identity.description` | Override description for the tool. |
-| `parameters` | object | optional | -- | Input parameters. Accepts the shorthand `{param: {type, description}}` (the runtime normalizes it into valid JSON Schema) or a full JSON Schema object. |
+| `agent` | string | REQUIRED | -- | `metadata.name` of the target agent. Must be deployed in the same runtime. |
+| `description` | string | optional | `Invoke agent '<agent>'` | Description for the model. Write a real one. |
+| `parameters` | object | optional | -- | Input parameters. Accepts the shorthand `{param: {type, description}}` (normalized into JSON Schema) or a full JSON Schema object. |
 | `context_transform` | string | optional | -- | Jinja2 template to transform context before passing to the sub-agent. |
-| `rate_limit` | object | optional | -- | Rate limiting: `{max_calls: int, period_seconds: int}`. |
+
+Since core v0.61.0 a sub-agent that proposes (`mode: propose`) writes into its
+parent's `propuestas`, tagged with `via`.
 
 ### Type: client (astromesh core v0.35.0+)
 
@@ -522,9 +647,124 @@ tool is a silent no-op — that is correct, not a bug.
 | `type` | string | REQUIRED | -- | Must be `"client"`. |
 | `name` | string | REQUIRED | -- | Tool name as exposed to the LLM. |
 | `description` | string | REQUIRED | -- | What the call means to the consumer. |
-| `parameters` | object | optional | -- | Input parameters. Shorthand `{param: {type, description}}` is normalized into valid JSON Schema before it reaches the model — required, because a strict provider rejects the whole request on an invalid schema. |
+| `parameters` | object | optional | -- | Input parameters. Shorthand `{param: {type, description}}` is normalized into valid JSON Schema before it reaches the model — required, because a strict provider rejects the whole request on an invalid schema. A `parameters` that is not a mapping skips just this tool with a warning. |
+| `rate_limit` | object | optional | -- | `{max_calls, window_seconds}`. |
 
-> Common per-tool fields apply to every type: `rate_limit` (`{max_calls, period_seconds}`), `requires_approval` (bool), and `timeout_seconds`.
+### Type: integration (astromesh core v0.37.0+)
+
+Exposes an allowlist of actions from an integration in the node's catalog
+(`astromesh/integrations/catalog/`: `praxis*`, `gmail`, `google_calendar`,
+`google_drive`, `google_sheets`, `http`, `whatsapp`, `facebook`, `instagram`,
+`tiktok`, `conocimiento` in 0.68). Each action registers as a tool named
+`<slug>_<action>`. Credentials come from the run (Nexus connection bundle) or
+`config/connections.yaml`, never from the manifest.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | string | REQUIRED | `"integration"`. |
+| `name` | string | REQUIRED | The catalog slug (e.g. `praxis`). Unknown slug → warning, tool skipped. |
+| `connection` | string | REQUIRED | Connection name. Missing → warning, tool skipped. |
+| `actions` | string array | REQUIRED | Allowlist of the integration's actions. Missing → warning, tool skipped (exposing every action inflates the prompt). An unknown action skips just that action. |
+| `confirm` | string array | optional | Subset of `actions` gated by the confirmation gate (core v0.42.0+). |
+| `rate_limit` | object | optional | Overrides the action's / integration's default. |
+
+**Confirmation gate.** An action in `confirm` does not execute when the model
+calls it: the runtime registers a pending proposal and replies with a sentence
+**it** writes ("Para confirmar respondé SI. Voy a ejecutar: …"); only a human
+"sí" in the next turn, for that exact tool **and** arguments, runs it. A
+`confirm` naming something not in `actions`, or a `confirm` without `actions`,
+is a `ValueError` — **the agent does not load** (`engine.py:1067-1089`). On a
+node older than v0.42.0 `confirm` is ignored and the write runs ungated, so
+verify the version before relying on it.
+
+### Type: api (astromesh core v0.57.0+)
+
+The tenant's own HTTP API, carried inline. Each operation becomes one tool named
+`<slug with _>_<operation>`. Unlike `integration`, **any invalid declaration
+raises and the agent does not load** (`integrations/api.py`).
+
+```yaml
+tools:
+  - name: erp-cliente          # kebab slug
+    type: api
+    connection: erp_main       # supplies base_url + credential per run
+    auth: { scheme: bearer }
+    operations:
+      - name: buscar_cliente
+        description: Find a customer by tax id.
+        writes: false
+        parameters:
+          cuit: { type: string, description: The customer's tax id., required: true }
+        request:
+          method: GET
+          path: /clientes
+          query: { cuit: "{cuit}" }
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Kebab-case slug, `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`. |
+| `connection` | Yes | Connection that supplies `base_url` and the credential (there is no `base_url` in the manifest). |
+| `auth.scheme` | Yes | `header` (+ `auth.header`), `bearer`, `basic`, or `query` (+ `auth.param`). |
+| `operations` | Yes | Non-empty list. Each: `name` (snake_case), `description`, `parameters`, `request`, `response`, `writes`, optional `mode`. |
+| `description` | No | Description of the API. |
+| `rate_limit` | No | Applies to every operation. |
+
+Per operation: `writes: false` (exactly) to read, or `writes: true` **with**
+`mode: propose` (core v0.59.0+) — a proposing write is never executed, it is
+returned to the caller in `propuestas`. Any other combination raises.
+`request.method` is `GET` or `POST`; `request.path` starts with `/`;
+`request.headers` is rejected (auth goes through `auth`); the final tool name
+must be ≤ 64 characters. Calls go only to **public** hosts.
+
+### Type: mcp (astromesh core v0.58.0+)
+
+The tenant's MCP server with a **snapshot** of its tools inline — the runtime
+does not discover. Each tool is registered as `<slug with _>_<tool name
+normalized to [a-z0-9_]>`. Invalid declarations raise; unknown keys are rejected
+(`integrations/mcp.py`). The node needs the `mcp` extra or the agent does not load.
+
+```yaml
+tools:
+  - name: soporte
+    type: mcp
+    connection: soporte_mcp
+    path: /mcp
+    auth: { scheme: header, header: X-Api-Key }
+    tools:
+      - name: buscar_ticket
+        description: Find a support ticket by number.
+        writes: false
+        input_schema:
+          type: object
+          properties: { numero: { type: string } }
+          required: [numero]
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Kebab-case slug, ≤ 30 characters. |
+| `connection` | Yes | Supplies `base_url` and credential; the call goes to `base_url + path`. |
+| `path` | Yes | Starts with `/`, no query or fragment. |
+| `auth.scheme` | Yes | `bearer`, or `header` with `auth.header` (reserved headers such as `Host`, `Content-Type`, `Mcp-Session-Id` are rejected). |
+| `tools` | Yes | At least one. Each: `name`, `description`, `input_schema` (`type: object`, ≤ 16 KB, ≤ 8 levels), `writes` (**no default** — must be declared), optional `mode: propose` (required when `writes: true`). |
+| `rate_limit` | No | Applies to every tool of the server. |
+| `max_result_tokens` | No | Accepted since core v0.66.0 (before, it rejected the server and left the agent in draft). |
+
+**Name collisions (`api` and `mcp`).** If the final name of an `api` or `mcp`
+tool matches any other tool of the agent — builtin, integration, another `api`
+or `mcp`, or the bundle's `kb_*` tools — in whichever order, the agent does not
+load (`engine.py:1124-1130, 1166-1174, 1210-1215`).
+
+### Tool result budget (core v0.66.0+)
+
+Every tool result is serialized (dicts and lists as compact JSON) and capped
+when it enters the conversation, so one large response cannot fill the window:
+a list keeps its first elements plus `{"_omitidos": N, …}`, a dict trims its
+largest (possibly nested) list, anything else is cut at the head. The cap is
+`tools[].max_result_tokens` → `orchestration.max_tool_result_tokens` → `8000`.
+It applies to `react`, `plan_and_execute`, `pipeline`, `parallel_fan_out` and
+`supervisor`; **not** to `swarm`, and Glyph programs receive full data.
 
 **Example tools array:**
 ```yaml
@@ -533,7 +773,7 @@ tools:
     name: web_search
     rate_limit:
       max_calls: 10
-      period_seconds: 60
+      window_seconds: 60
   - type: agent
     name: lookup_inventory
     agent: inventory-agent
@@ -552,7 +792,55 @@ tools:
         timeline:
           type: string
       required: [company_size]
+  - type: integration          # core v0.37.0+
+    name: praxis
+    connection: praxis_main
+    actions: [buscar_records, crear_record]
+    confirm: [crear_record]     # core v0.42.0+ — incompatible with spec.chain
+    max_result_tokens: 4000     # core v0.66.0+
 ```
+
+---
+
+## spec.prefetch (optional) — astromesh core v0.51.0+
+
+Read-only lookups that run **before the model**, so a turn that always starts by
+looking up the same thing does not spend an LLM round trip deciding to do it.
+Results land in the template variable `prefetch.<name>` as
+`{success, data, metadata, error}`, and each call emits a `tool.prefetch` span.
+
+```yaml
+spec:
+  tools:
+    - name: praxis
+      type: integration
+      connection: praxis_main
+      actions: [buscar_records]
+  prefetch:
+    - name: cliente
+      tool: praxis_buscar_records          # the REGISTERED name, <slug>_<action>
+      arguments:
+        entidad: cliente
+        filter: "telefono:eq:{{ sender_phone }}"
+      when: "sender_phone is defined"      # an expression, not a template
+  prompts:
+    context: |
+      {% if prefetch is defined and prefetch.cliente.success %}
+      Customer: {{ prefetch.cliente.data }}
+      {% endif %}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Key under `prefetch`. Unique within the block. |
+| `tool` | Yes | A registered integration action — a catalog `integration` action or an `api` read operation — whose method is `GET` and that is **not** in `confirm`. |
+| `arguments` | No | Object. String values are Jinja2 templates rendered with the run's caller context and earlier entries (`prefetch.<name>`). |
+| `when` | No | Jinja2 **expression**, evaluated (not rendered). False skips the entry. |
+
+- **An invalid declaration does not load the agent** (`runtime/prefetch.py`): unregistered tool, not an integration action, non-`GET`, in `confirm`, repeated `name`, and (v0.51.1+) a `when` or `arguments` template that does not compile.
+- **A lookup that fails at run time does not fail the turn** — `success: false`, and the model keeps its tools.
+- Prefetch results change every query: render them in `prompts.context`, not `prompts.system`.
+- `prefetch` is **not declared in the 0.68 editor schema** (`spec` has `additionalProperties: false`), so a JSON-schema validator flags it although the runtime reads it (`engine.py:1247-1251`).
 
 ---
 
@@ -566,12 +854,27 @@ Configures agent memory backends.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `backend` | string | optional | `"in_memory"` | Storage backend. One of: `in_memory`, `sqlite`, `redis`, `postgres`. |
-| `strategy` | string | optional | `"sliding_window"` | Memory management strategy. One of: `sliding_window`, `summary`, `token_budget`. |
-| `max_turns` | integer | optional | `50` | Maximum conversation turns to retain (for `sliding_window`). This is the exact key the runtime reads (`max_messages` is an accepted alias). |
-| `ttl` | integer | optional | `86400` | Time-to-live in seconds for memory entries. Default is 24 hours. |
+| `backend` | string | optional | -- | Storage backend. **Only `redis` is built by the runtime** (`astromesh/memory/factory.py`). The editor schema also accepts `in_memory`, `sqlite`, `postgres`, but declaring one of those logs a warning and the agent runs **without conversational memory** — it re-introduces itself on every message. Same outcome if the node lacks the `redis` extra. |
+| `connection.url` | string | REQUIRED with `redis` | -- | Redis DSN, e.g. `redis://redis:6379/0`. Read with no default: omit it and the agent runs **without memory** (warning at load, core v0.44.1+). |
+| `strategy` | string | optional | `"sliding_window"` | One of: `sliding_window`, `summary`, `token_budget`. `summary` folds turns that leave the `max_turns` window into a running summary — one extra model call per exchange, on the `summarizer` role (falls back to `default`). |
+| `max_turns` | integer | optional | `50` | Turns read back per run. This is the key the runtime reads; `max_messages` is accepted by the editor schema but **not read** by the runtime (`core/memory.py`). |
+| `ttl` | integer | optional | `259200` | Time-to-live in seconds (72 h). |
 
-### spec.memory.semantic (optional)
+Whatever the strategy, history is sent to the model **as messages** and trimmed
+to a budget derived from the model's `context_window` (core v0.64.0+; see
+`spec.model`). Before core v0.44.0 no agent had conversational memory with any
+backend — the backend was never constructed.
+
+### spec.memory.semantic / spec.memory.episodic (accepted, inert in 0.68)
+
+The editor schema accepts both, but `_build_agent` constructs the
+`MemoryManager` with **only** a conversational backend (`engine.py:895-902`) —
+no semantic or episodic backend is ever built from the manifest, so
+`memory.semantic` / `memory.episodic` in templates are always empty. Do not
+emit these blocks expecting them to do anything; use `spec.knowledge` for
+retrieval.
+
+#### spec.memory.semantic (schema reference)
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -579,11 +882,84 @@ Configures agent memory backends.
 | `similarity_threshold` | number | optional | `0.75` | Minimum cosine similarity for retrieval, 0.0-1.0. |
 | `max_results` | integer | optional | `10` | Maximum number of results to return per query. |
 
-### spec.memory.episodic (optional)
+#### spec.memory.episodic (schema reference)
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `backend` | string | optional | `"sqlite"` | Storage backend for episodic memory. |
+Free-form object (`additionalProperties: true` in the editor schema).
+
+---
+
+## spec.knowledge (optional)
+
+Knowledge the agent can draw on. At least one of `pipeline` or `bundle` is
+required by the editor schema (`anyOf`); they are independent and can be combined.
+
+| Field | Type | Since | Description |
+|-------|------|-------|-------------|
+| `pipeline` | string | core v0.30.0 | `metadata.name` of a `RAGPipeline` resource. Chunks are retrieved for every query and exposed to the templates as `knowledge`. Unknown or unbuildable pipeline → warning, the agent runs without it (`engine.py:827-845`). |
+| `top_k` | integer | core v0.30.0 | Chunks per run, `pipeline` only. Default: the pipeline's `retrieval.top_k` (else 5). |
+| `bundle` | string | **core v0.68.0** | Directory of an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format) bundle (v0.2, also reads v0.1), relative to the node's config directory or absolute. Not a directory → warning, the agent runs without it (`engine.py:808-825`). |
+
+### Knowledge bundles (core v0.68.0+)
+
+An OKF bundle is a directory of markdown concepts with YAML frontmatter,
+cross-linked like a wiki. No embeddings, no vector store: the agent
+**navigates** it. With `bundle` set the runtime registers three read-only tools
+(do **not** declare them in `spec.tools`):
+
+| Tool | Arguments | Returns |
+|------|-----------|---------|
+| `kb_index` | `path` (default `/`) | The directory's `index.md`, or one synthesized from frontmatter. |
+| `kb_read` | `concept_id` | `type`, `title`, `trust`, `stale`, `warnings`, body, and links resolved to concept ids. |
+| `kb_find` | `text`, `type`, `tags`, `include_deprecated`, `limit` (≤ 100, default 20) | Matching concepts without body. Deprecated ones excluded unless asked. |
+
+and fills the template variable `bundle_index` with the root index.
+`bundle_index` is stable between queries (it changes only when the bundle does,
+or a root concept passes its `stale_after`), so put it in **`prompts.system`** —
+it keeps the cache warm and saves the agent its first `kb_index` call. Per-query
+data (`knowledge`, `prefetch`) goes in **`prompts.context`**.
+
+Trust signals are reported, never used to hide a concept: `trust`
+(`human-reviewed` / `machine-confirmed` / `unverified`), `stale` (past
+`stale_after`), and `warnings` such as `DEPRECATED: …`. **Tell the agent in its
+prompt what to do with them** (e.g. refuse deprecated sources, flag stale or
+draft ones).
+
+Rules:
+
+- A declared tool named `kb_index`, `kb_read` or `kb_find` collides with the
+  bundle's — the agent does not load.
+- The bundle lives on the **node's filesystem** (relative to its config
+  directory). Remote bundles (git, tarball) are not supported; nor is ingesting a
+  bundle into a `RAGPipeline`, or writing to it.
+- Read-only and confined to the bundle root (symlinks included); nothing in the
+  bundle is executed. A concept body reaches the model like any tool result —
+  mount bundles only from trusted sources.
+- `kb_find` scans the whole bundle each call: fine for hundreds to a few
+  thousand concepts.
+- On a node older than v0.68.0 `knowledge.bundle` is ignored: no `kb_*` tools,
+  empty `bundle_index`.
+
+**pipeline vs bundle.** Use `pipeline` for a large or unstructured corpus where
+"find the most similar chunks" is the right question (manuals, tickets, FAQs
+scraped from a site). Use a `bundle` for curated, structured knowledge whose
+**trust and freshness matter** — policies, product references, procedures — and
+that is small enough to navigate. Both can coexist.
+
+```yaml
+spec:
+  knowledge:
+    bundle: knowledge/acme_retail       # core v0.68.0+
+    pipeline: product-knowledge         # optional, independent
+    top_k: 4
+  prompts:
+    system: |
+      You answer Acme support questions from the knowledge bundle only.
+      Never cite a concept whose warnings say DEPRECATED; say when a source is stale.
+      {{ bundle_index }}
+    context: |
+      {% if knowledge %}RELATED DOCUMENTS:
+      {{ knowledge }}{% endif %}
+```
 
 ---
 
@@ -591,19 +967,21 @@ Configures agent memory backends.
 
 Input and output validation rules. Both `input` and `output` are arrays of rule objects.
 
+**Not enforced in core 0.68.** The runtime stores `spec.guardrails` (`engine.py:1263, 1585`) but never runs it: `GuardrailsEngine` has no caller in `astromesh/runtime` (nor anywhere in `astromesh/`). Every rule below describes what `core/guardrails.py` *would* do; none affects input or output today. Do not present guardrails as PII protection or a length cap.
+
 ### Rule types
 
 | Rule Type | Applicable To | Fields | Description |
 |-----------|--------------|--------|-------------|
-| `pii_detection` | input, output | `action` (`redact`, `block`, `warn`, `log`) | Detects and handles emails, phone numbers, SSNs, credit cards. `redact` masks them in place. |
-| `max_length` | input, output | `max_chars` (integer) | Truncates/rejects content over the limit. **Field is `max_chars`** — `limit` is ignored. |
-| `topic_filter` | input | `blocked_topics` (string array), `action` | Blocks or warns on off-topic conversations. |
-| `cost_limit` | output | `max_tokens_per_turn` (integer) | Caps output tokens per turn. (There is no per-request USD field in the runtime.) |
-| `content_filter` | output | `blocked_patterns` (regex string array), `action` | Filters content matching any regex pattern. |
+| `pii_detection` | input, output | `action` | Would mask emails, phone numbers, SSNs, credit cards when `action: redact` (the default); any other action would leave the text untouched. |
+| `max_length` | **input only** | `max_chars` (integer, default 10000) | Would truncate the incoming message. **Field is `max_chars`** — `limit` is ignored. In `output` it would be a no-op (the output pass has no `max_length` branch). |
+| `topic_filter` | **input only** | `blocked_topics` (string array), `action` | Would reject (`action: block`) a message containing a blocked topic; anything else (default `warn`) would let it through. |
+| `cost_limit` | output | `max_tokens_per_turn` (integer, default 500) | Would truncate the answer to roughly that many tokens (word-based estimate). No USD field exists. |
+| `content_filter` | output | `blocked_patterns` (regex string array) | Would replace every match with `[FILTERED]`, case-insensitive. `action` is not read. |
 
-> The action vocabulary is `redact`, `block`, `warn`, `log`. `prompt_injection` appears in some schema examples but is **not implemented** in the current runtime — don't rely on it.
+> Source: `astromesh/core/guardrails.py`. The editor schema lists `redact`, `block`, `warn`, `log` as actions and `prompt_injection` as an example type, but `prompt_injection` is **not implemented** — don't rely on it. There is no runtime cap on answer length: use the prompt plus `max_tokens` on the model block.
 
-**Example:**
+**Example** (inert in 0.68):
 ```yaml
 guardrails:
   input:
@@ -618,7 +996,6 @@ guardrails:
     - type: content_filter
       blocked_patterns:
         - "(?i)\\b(kill yourself|kys)\\b"
-      action: block
     - type: cost_limit
       max_tokens_per_turn: 1024
 ```
@@ -627,18 +1004,32 @@ guardrails:
 
 ## spec.permissions (optional)
 
-Controls what actions the agent is allowed to perform.
+Accepted by the editor schema; **not enforced** by the 0.68 runtime. Do not present any of it as a security boundary.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `allowed_actions` | string array | optional | `["respond"]` | High-level action whitelist. Values: `respond`, `use_tools`, `delegate`, `escalate`. |
+| `allowed_actions` | string array | optional | -- | Passed to `ToolRegistry.get_tool_schemas` as a filter, but it only hides tools that declare their own `permissions` list, and **no tool loaded from YAML declares one** (`core/tools.py:350-358`) — so today it filters nothing. It is *not* a list of `respond`/`use_tools`/`delegate`/`escalate` verbs. |
 | `filesystem` | object | optional | `{}` | Filesystem access controls. |
 | `filesystem.read` | string array | optional | `[]` | Glob patterns for allowed read paths. |
 | `filesystem.write` | string array | optional | `[]` | Glob patterns for allowed write paths. |
 | `network` | object | optional | `{}` | Network access controls. |
 | `network.allowed` | string array | optional | `[]` | Allowed outbound hostnames or CIDR ranges. |
 | `execution` | object | optional | `{}` | Execution controls. |
-| `execution.dry_run` | boolean | optional | `false` | When true, tools log intended actions without executing. |
+| `execution.dry_run` | boolean | optional | `false` | Intended to simulate side-effecting tools. |
+
+`filesystem`, `network` and `execution` have no reader in `astromesh/runtime` or
+`astromesh/core` in 0.68: they are stored, not enforced. Real write safety comes
+from `confirm` (integrations) and `mode: propose` (`api`/`mcp`); network safety
+for `api`/`mcp` comes from the runtime's public-host guard.
+
+---
+
+## spec.observability (optional)
+
+Accepted by the editor schema: `tracing` (bool), `metrics` (bool), `collector`
+(`stdout` | `otlp` | `internal`), `sample_rate` (0.0–1.0). `_build_agent` does not
+read it per agent in 0.68 — tracing is configured at the node. Omit it unless the
+user asks.
 
 ---
 
@@ -655,7 +1046,10 @@ Use `metadata.labels` (e.g. `channel: whatsapp`) to *tag* a channel agent, but d
 
 ## Complete Example
 
-A sales lead qualification agent deployed on WhatsApp with all sections populated:
+A sales lead qualification agent deployed on WhatsApp, valid against the core
+v0.68.0 editor schema and using only what the 0.68 runtime actually reads
+(needs a node at core v0.68.0+ for `knowledge.bundle`, v0.64.0+ for
+`prompts.context` / `context_window`, v0.38.1+ for `output_schema`):
 
 ```yaml
 apiVersion: astromesh/v1
@@ -681,6 +1075,7 @@ spec:
       model: gpt-4o
       api_key_env: OPENAI_API_KEY
       timeout: 30
+      context_window: 128000          # core v0.64.0+: sizes the history budget
       parameters:
         temperature: 0.4
         top_p: 0.95
@@ -690,6 +1085,7 @@ spec:
       model: llama3.1:8b
       endpoint: http://ollama.sales-team.svc.cluster.local:11434
       timeout: 60
+      context_window: 8192
       parameters:
         temperature: 0.4
         max_tokens: 1024
@@ -698,33 +1094,31 @@ spec:
       health_check_interval: 30
 
   prompts:
+    # Stable between turns -> cacheable. No per-query variables here.
     system: |
-      You are {{agent_name}}, a friendly sales qualification assistant for Acme Corp.
-      Today is {{current_date}}.
+      You are the sales qualification assistant for Acme Corp, talking to
+      prospects on WhatsApp.
 
-      Your goal is to understand the prospect's needs, company size, budget, and timeline
-      through natural conversation. Score every lead using the score_lead tool.
+      Your goal is to understand the prospect's needs, company size, budget and
+      timeline through natural conversation. When you have enough, score the lead
+      with the score_lead tool. For pricing questions call lookup_pricing.
 
-      Be professional but conversational. Never be pushy. If someone is not interested,
-      thank them politely and end the conversation.
+      Be professional but conversational. Never be pushy. If someone is not
+      interested, thank them politely and end the conversation. Keep replies short.
+      {% if contact_name %}Address the prospect as {{ contact_name }}.{% endif %}
 
-      Available tools: {{tools_list}}
-    templates:
-      greeting: |
-        Hi there! Thanks for reaching out to Acme Corp. I'd love to learn more about
-        what you're looking for. Could you tell me a bit about your company?
-      qualified_handoff: |
-        Great news! Based on our conversation, I think we have a great solution for you.
-        I'm connecting you with {{sales_rep}} who specializes in {{product_area}}.
-      not_qualified: |
-        Thanks for your time! Based on what you've shared, our enterprise solution might
-        not be the best fit right now. I'd recommend checking out our self-serve plan at
-        https://acme.example.com/plans.
+      Product knowledge map (open concepts with kb_read; never quote a concept
+      whose warnings say DEPRECATED):
+      {{ bundle_index }}
+    # Per-query data goes here, next to the user's message.
+    context: |
+      {% if knowledge %}RELEVANT CASE STUDIES:
+      {{ knowledge }}{% endif %}
 
   orchestration:
     pattern: react
     max_iterations: 10
-    timeout_seconds: 30
+    max_tool_result_tokens: 4000      # core v0.66.0+
 
   tools:
     - type: client
@@ -744,69 +1138,34 @@ spec:
             type: string
             enum: [immediate, this_quarter, this_year, exploring]
             description: "Purchase timeline"
-          use_case:
-            type: string
-            description: "Primary use case or pain point"
-          decision_maker:
-            type: boolean
-            description: "Whether the contact is a decision maker"
         required: [company_size, timeline]
-    - type: builtin
-      name: http_request
-      config:
-        base_url: "https://crm.acme.example.com/api"
-        headers:
-          Authorization: "Bearer ${CRM_API_TOKEN}"
-      rate_limit:
-        max_calls: 5
-        period_seconds: 60
     - type: agent
       name: lookup_pricing
       agent: pricing-agent
       description: "Look up product pricing for a given tier and feature set"
 
+  knowledge:
+    bundle: knowledge/acme-products   # core v0.68.0+: registers kb_index/kb_read/kb_find
+    pipeline: case-studies            # RAGPipeline, retrieved per query as `knowledge`
+    top_k: 3
+
   memory:
     conversational:
-      backend: redis
+      backend: redis                  # the only backend the runtime builds
+      connection:
+        url: redis://redis.sales-team.svc.cluster.local:6379/0
       strategy: sliding_window
-      max_turns: 50
-      ttl: 86400
-    semantic:
-      backend: chromadb
-      similarity_threshold: 0.75
-      max_results: 10
-    episodic:
-      backend: sqlite
+      max_turns: 20
+      ttl: 259200
 
-  guardrails:
-    input:
-      - type: pii_detection
-        action: redact
-      - type: max_length
-        max_chars: 4096
-      - type: topic_filter
-        blocked_topics: [politics, religion, competitors]
-        action: warn
-    output:
-      - type: content_filter
-        blocked_patterns:
-          - "(?i)\\b(kill yourself|kys)\\b"
-        action: block
-      - type: cost_limit
-        max_tokens_per_turn: 1024
-
-  permissions:
-    allowed_actions: [respond, use_tools]
-    filesystem:
-      read: []
-      write: []
-    network:
-      allowed:
-        - "crm.acme.example.com"
-        - "api.openai.com"
-    execution:
-      dry_run: false
+  output_schema:                      # core v0.38.1+: adds `data` to the run response
+    score: {type: integer}
+    qualified: {type: boolean}
 ```
+
+Deliberately absent: `guardrails` and `orchestration.timeout_seconds` (neither applied by the 0.68 runtime), `permissions` (not enforced in 0.68), `memory.semantic` /
+`episodic` (never built), `prompts.templates` (no pattern reads them), and a
+`spec.channels` block (does not exist — WhatsApp is wired at deploy time).
 
 ---
 
