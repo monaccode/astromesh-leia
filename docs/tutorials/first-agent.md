@@ -285,13 +285,13 @@ spec:
       max_turns: 20
   guardrails:
     input:
-      - type: pii_detection
-        action: redact
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
     output:
       - type: pii_detection
         action: redact
-      - type: max_length
-        max_chars: 1600
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 
 ---
 
@@ -586,7 +586,7 @@ Suggestions:
 
 > **Troubleshooting: "Channel: FAIL"**
 >
-> The agent's responses are too long for WhatsApp (over 1600 characters) or use unsupported formatting. The `max_length` guardrail should handle this, but you may need to lower the `max_tokens` parameter.
+> The agent's responses are too long for WhatsApp (over 1600 characters) or use unsupported formatting. `max_length` only caps the incoming message; reply length depends on `max_tokens` and the prompt, so you may need to lower the `max_tokens` parameter.
 
 ---
 

@@ -336,13 +336,13 @@ spec:
       ttl: 86400                     # 24 hours
   guardrails:
     input:
-      - type: pii_detection
-        action: redact                 # Mask PII before storing in memory/logs
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
     output:
-      - type: content_filter
-        blocked_patterns:
-          - "(?i)\\b(kill yourself|kys)\\b"
-        action: block
+      - type: pii_detection
+        action: redact                 # Mask emails/phones in what the agent writes back
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Verify Deployment
@@ -519,20 +519,25 @@ The astromesh-node validates this signature automatically. **Never disable signa
 
 ### PII Guardrails
 
-WhatsApp conversations frequently contain personally identifiable information (names, phone numbers, addresses, financial details). Always enable PII guardrails in your agent YAML:
+WhatsApp conversations frequently contain personally identifiable information (names, phone numbers, addresses, financial details). Core 0.70+ enforces `spec.guardrails`, so enable output PII redaction in your agent YAML:
 
 ```yaml
 spec:
   guardrails:
     input:
-      - type: pii_detection
-        action: redact       # Mask PII before storing in memory or logs
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
     output:
-      - type: content_filter
-        blocked_patterns:
-          - "(?i)\\b(kill yourself|kys)\\b"
-        action: block
+      - type: pii_detection
+        action: redact                 # Mask emails/phones in what the agent writes back
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
+
+**Limits of PII guardrails (core 0.70):**
+- Input `pii_detection: redact` hides emails, phones and 10/16-digit numbers from the model **and its tools**: do not use it when the agent needs a phone, customer ID or order number (bookings, order lookups). Redact on output instead.
+- The patterns are US-format: an Argentine phone number is not detected.
+- A `block` action returns a normal response with `blocked: true` and `guardrail {direction, rule, reason}`.
 
 **Additional PII considerations:**
 - Configure `memory.conversational.ttl` to automatically expire conversation data after a reasonable period (e.g., 24 hours).

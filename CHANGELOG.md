@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-14
+
+Sincroniza el conocimiento de Leia con astromesh **core v0.70.0**, donde
+`spec.guardrails` **se aplica de verdad** (en 0.68/0.69 se guardaba y nadie lo
+ejecutaba). Se revierte la documentación de 0.6.0 que lo daba por inerte.
+
+### Changed
+
+- **`agents/leia-architect.md`: guardrails de nuevo.** Sección con los tipos
+  reales (`pii_detection`, `topic_filter`, `max_length`, `content_filter`,
+  `cost_limit`), su lado válido, acciones y defaults, `message`, y las claves no
+  soportadas (`blocked_categories`, `allowed_topics`). Guía: `pii_detection` de
+  entrada oculta emails/teléfonos/números de 10 y 16 dígitos **también a las
+  tools**, así que se redacta en la salida cuando el agente necesita teléfonos
+  o IDs; `cost_limit` ≈ 4000 (presupuesto de tokens de salida de toda la
+  corrida); los patrones de PII son de EE. UU. y `topic_filter` es por
+  substring. Gate de versión: v0.70.0.
+- **`schemas/astromesh-v1-agent.md` y `schemas/whatsapp-config.md`**: la
+  sección `spec.guardrails` describe el comportamiento aplicado (tabla por
+  tipo, `blocked: true` + `guardrail {direction, rule, reason}`, límites) y
+  WhatsApp vuelve a recomendar redacción de PII en la salida.
+- **Templates**: los 6 recuperan `guardrails` con sólo claves soportadas
+  (`max_length` de entrada a 4000, `cost_limit` 4000; `pii_detection` de salida
+  en customer-support, ecommerce-assistant y onboarding-guide). Sin PII de
+  entrada, para que reservas y turnos conserven el teléfono.
+- **Docs** (`agents-guide`, `templates-guide`, `whatsapp-setup`, tutoriales): los
+  ejemplos dejan de usar `max_length` en `output` (no hace nada) y de redactar
+  PII en la entrada donde el agente necesita el dato.
+
+### Compatibilidad
+
+- Un manifest con `guardrails` escrito para 0.68 empieza a aplicarse en 0.70:
+  revisar `pii_detection` de entrada y `cost_limit` bajos antes de actualizar el
+  nodo. Siguen inertes en 0.70: `orchestration.timeout_seconds`,
+  `memory.semantic`/`episodic`, `allowed_actions` y `swarm`.
+
 ## [0.6.0] - 2026-10-11
 
 Sincroniza el conocimiento de Leia con astromesh **core v0.68.0** (desde v0.38.1).

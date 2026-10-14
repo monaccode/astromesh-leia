@@ -214,23 +214,39 @@ spec:
       model: llama3.2-vision:11b
 ```
 
-### PII and Guardrails — not enforced in core 0.68
+### PII and Guardrails (core 0.70+)
 
 WhatsApp conversations frequently contain personal information (names, phone
-numbers, addresses). **Do not assume any of it is redacted.** The runtime stores
-`spec.guardrails` but never runs it: `GuardrailsEngine` has no caller in
-`astromesh/runtime`, so a `pii_detection: redact` rule does nothing — the raw
-text reaches the model, the conversational memory and the traces. The same goes
-for `max_length` as a response cap. See `schemas/astromesh-v1-agent.md`,
-*spec.guardrails*.
+numbers, addresses). From core **0.70.0** `spec.guardrails` is enforced, so the
+architect should emit:
 
-What to do instead on core 0.68:
+```yaml
+spec:
+  guardrails:
+    input:
+      - type: max_length
+        max_chars: 4000          # WhatsApp caps a message at 4096
+    output:
+      - type: pii_detection
+        action: redact           # do not repeat emails/phones in replies
+      - type: cost_limit
+        max_tokens_per_turn: 4000
+```
 
-- Tell the user plainly that PII is processed and stored as sent; handle
-  retention through the memory `ttl` and the node's own data policies.
-- Keep replies short with the model's `max_tokens` and an explicit instruction in
-  the system prompt (WhatsApp messages cap around 4096 characters; aim far lower).
-- Only emit a `guardrails` block if the user asks for it, and then say it is inert.
+Rules of thumb:
+
+- **Do not use input `pii_detection`** if the agent or its tools need the
+  customer's phone, customer ID or order number: input redaction hides emails,
+  phones and 10/16-digit numbers from the model and the tools. Redact output.
+- Skip output redaction when the agent must confirm a name/phone back
+  (bookings, lead capture).
+- PII patterns are US-format: an Argentine phone number is not detected, so
+  don't promise full PII protection. Memory still stores what was sent; manage
+  retention with the memory `ttl`.
+- `max_length` caps the *incoming* message only. Keep replies short with the
+  model's `max_tokens` and an explicit instruction in the system prompt.
+- On core 0.68/0.69 none of this runs; tell the user to upgrade to 0.70+.
+- See `schemas/astromesh-v1-agent.md`, *spec.guardrails*.
 
 ### Memory for Conversation Continuity
 

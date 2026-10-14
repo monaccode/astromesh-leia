@@ -166,11 +166,11 @@ spec:
       max_turns: 30
   guardrails:
     input:
-      - type: pii_detection
-        action: redact
-    output:
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Step 4: Deploy
@@ -283,13 +283,13 @@ spec:
       max_turns: 25
   guardrails:
     input:
-      - type: pii_detection
-        action: redact
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
     output:
       - type: pii_detection
         action: redact
-      - type: max_length
-        max_chars: 1600
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 Notice how the architect adapted the template:
@@ -431,9 +431,12 @@ spec:
       strategy: sliding_window
       max_turns: 20
   guardrails:
-    output:
+    input:
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 Key customizations the architect made:
@@ -472,7 +475,7 @@ All three agents were created from templates, but each is tailored to its busine
 | Temperature | 0.4 | 0.3 | 0.3 |
 | Max turns | 30 | 25 | 20 |
 | Why that pattern | Reservations are multi-step (date, time, size, name, confirm) | Shopping is Q&A-driven, unpredictable flow | Appointments are multi-step (service, date, time, name, confirm) |
-| Guardrails | PII redact (in + out), max length | PII redact (in + out), max length | Max length only (no PII on input since patients provide contact info intentionally) |
+| Guardrails | Input max length, cost limit (no PII redaction: the guest's name and phone must reach the model) | Input max length, output PII redact, cost limit | Input max length, cost limit (patients provide contact info intentionally) |
 
 ### Why different temperatures?
 
@@ -519,7 +522,7 @@ Key fields you might want to change:
 | `spec.prompts.system` | Add business-specific details | Menu items, policies, contact info |
 | `spec.orchestration.max_iterations` | Allow more reasoning steps | Increase to `10` for complex workflows |
 | `spec.memory.max_turns` | Keep more conversation history | Increase for long conversations |
-| `spec.guardrails` | Add or remove safety rules | Add `topic_filter` to block off-topic messages |
+| `spec.guardrails` | Add or remove safety rules | Add an input `topic_filter` (`blocked_topics`, `action: block`) to reject off-topic messages |
 
 Then deploy the edited file:
 

@@ -43,4 +43,12 @@ spec:
       backend: in_memory  # no memory in 0.68 — use redis + connection.url to persist
       strategy: sliding_window
       max_turns: 40
-  # guardrails: not enforced by core 0.68 — omitted
+  guardrails:
+    input:
+      - type: max_length
+        max_chars: 4000
+    output:
+      - type: pii_detection
+        action: redact
+      - type: cost_limit
+        max_tokens_per_turn: 4000

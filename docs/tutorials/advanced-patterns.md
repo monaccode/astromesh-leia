@@ -168,11 +168,11 @@ spec:
       max_turns: 30
   guardrails:
     input:
-      - type: pii_detection
-        action: redact
-    output:
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### How plan_and_execute works at runtime
@@ -297,9 +297,12 @@ spec:
       strategy: sliding_window
       max_turns: 15
   guardrails:
-    output:
+    input:
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### How parallel_fan_out works at runtime
@@ -659,13 +662,13 @@ spec:
       max_turns: 40
   guardrails:
     input:
-      - type: pii_detection
-        action: redact
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
     output:
       - type: pii_detection
         action: redact
-      - type: max_length
-        max_chars: 1600
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### How supervisor works at runtime
