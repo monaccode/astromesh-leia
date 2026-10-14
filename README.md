@@ -5,7 +5,7 @@
 **Agent operations in plain English, from inside Claude Code.**
 
 [![Astromesh · Author](https://img.shields.io/badge/astromesh-author-8b5cf6?labelColor=161b22)](https://monaccode.github.io/astromesh/#ecosystem)
-[![Version](https://img.shields.io/badge/version-v0.6.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.6.0)
+[![Version](https://img.shields.io/badge/version-v0.7.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.7.0)
 [![Validate Plugin](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml)
 [![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
 [![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
@@ -68,7 +68,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.6.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.7.0.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -135,13 +135,14 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
+| 0.7.x | 0.3.x ¹ | 0.29 – 0.70.x |
 | 0.6.x | 0.3.x ¹ | 0.29 – 0.68.x |
 | 0.5.x | 0.3.x | 0.29 – 0.38.x |
 | 0.4.x | 0.3.x | 0.29 – 0.36.x |
 | 0.2.x | 0.3.x | 0.18 – 0.28.9 |
 | 0.1.x | 0.1.x | 0.18+ |
 
-¹ Leia's Nexus operations (deploy, status, logs, teardown) still target the Nexus 0.3.x API. Leia 0.6 knows the agent manifest up to core 0.68, but it does not yet speak to newer Nexus releases (0.26.x expects a different auth header); that sync is pending.
+¹ Leia's Nexus operations (deploy, status, logs, teardown) still target the Nexus 0.3.x API. Leia 0.7 knows the agent manifest up to core 0.70, but it does not yet speak to newer Nexus releases (0.26.x expects a different auth header); that sync is pending.
 
 ## License
 
