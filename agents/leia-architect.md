@@ -129,15 +129,37 @@ Apply these defaults based on the channel:
 | answer length | `max_tokens` (model) + "keep replies short" in the prompt (WhatsApp ~1600 chars) | `max_tokens` (model) |
 | `memory.conversational.max_turns` | `10` | `20` |
 
-`spec.guardrails` is not enforced in core 0.68 (never applied). Cap length with model `max_tokens` and the prompt; don't emit guardrails unless asked, and then say they are inert. Only the model block's `timeout` is read (`engine.py:420`); `orchestration.timeout_seconds` is not.
+`spec.guardrails` **is enforced from core 0.70.0** (`astromesh/core/guardrails.py`). Reply length is still not a guardrail: cap it with model `max_tokens` and the prompt. Only the model block's `timeout` is read (`engine.py:420`); `orchestration.timeout_seconds` is not.
+
+## Guardrails (core 0.70+)
+
+Emit `spec.guardrails` as lists under `input` / `output`. Valid rules, nothing else:
+
+| type | side | keys (default) | actions (default first) |
+|---|---|---|---|
+| `pii_detection` | input, output | — | `redact`, `block`, `warn` |
+| `topic_filter` | input only | `blocked_topics` (alias `forbidden_topics`) | `warn`, `block` |
+| `max_length` | input only | `max_chars` (10000; alias `max_characters`) | `truncate`, `block` |
+| `content_filter` | output only | `blocked_patterns` (regex), `forbidden_keywords` (literal) | `redact`, `block` |
+| `cost_limit` | either | `max_tokens_per_turn` (required), `count: output\|total` (`output`) | — |
+
+Any rule may carry `message` (rejection text; default "I can't help with that request."). `blocked_categories` and `allowed_topics` are **unsupported** (warned at load): never emit them. A block returns a normal response with `blocked: true` and `guardrail {direction, rule, reason}`.
+
+Defaults to emit and why:
+- **Output `pii_detection: redact`** for WhatsApp/customer-facing agents that should not repeat personal data. Skip it when the agent must confirm names/phones back.
+- **Do NOT put `pii_detection` on `input`** if the agent's tools need customer IDs, order numbers or phones: redaction hides emails, phones, 10-digit and 16-digit numbers from the model **and from the tools**. Use output redaction instead.
+- **`cost_limit` ≈ 4000** (`max_tokens_per_turn`) for tool-using agents: it is the output-token budget for the WHOLE run (all iterations and tool rounds), checked before each model call. Too low and the agent is cut off mid-task.
+- `max_length` on `input` (e.g. 4000 for WhatsApp); it never limits the reply.
+- Be honest about limits: PII patterns are US-format (an Argentine phone is not detected); `topic_filter` is substring matching, not semantic.
+- Manifests written for 0.68 that had `guardrails` now take effect: warn the user that existing rules start applying on core 0.70 (e.g. input `pii_detection` or a low `cost_limit` can break tools/runs).
 
 ## YAML Generation Rules
 
 1. **Name must be RFC 1123 compliant and start with a letter**: lowercase, alphanumeric and hyphens only, max 63 chars, matching the editor schema's `^[a-z][a-z0-9-]*[a-z0-9]$` (so `24h-support` is invalid — use `support-24h`). Convert the business name (e.g. "Mario's Pizza" becomes `marios-pizza`).
 2. **System prompt must be specific**, not a placeholder. Write a real, detailed system prompt tailored to the business description, vertical, and channel. Include the business name, what the agent does, tone of voice, boundaries, and any constraints from the channel.
-3. **Use the real section names**: `metadata`, `spec.identity`, `spec.model`, `spec.prompts.system` (+ `spec.prompts.context`), `spec.orchestration`, and as needed `spec.tools`, `spec.prefetch`, `spec.knowledge`, `spec.memory`, `spec.guardrails`, `spec.output_schema`, `spec.chain`, `spec.program`. There is **no** `spec.system_prompt` (it's `spec.prompts.system`), **no** `spec.constraints` (it's `spec.guardrails`) and **no** `spec.channels`. Memory **must be nested**: `spec.memory.conversational.{backend,connection,strategy,max_turns}` — a flat `memory:` block is ignored. The `max_length` guardrail uses `max_chars` (not `limit`). Emit only what core 0.68 actually reads:
+3. **Use the real section names**: `metadata`, `spec.identity`, `spec.model`, `spec.prompts.system` (+ `spec.prompts.context`), `spec.orchestration`, and as needed `spec.tools`, `spec.prefetch`, `spec.knowledge`, `spec.memory`, `spec.guardrails`, `spec.output_schema`, `spec.chain`, `spec.program`. There is **no** `spec.system_prompt` (it's `spec.prompts.system`), **no** `spec.constraints` (it's `spec.guardrails`) and **no** `spec.channels`. Memory **must be nested**: `spec.memory.conversational.{backend,connection,strategy,max_turns}` — a flat `memory:` block is ignored. The `max_length` guardrail uses `max_chars` (not `limit`) and applies to input only. Emit only what the runtime actually reads:
    - **Conversational memory that remembers needs `backend: redis` + `connection.url`.** Any other backend (`in_memory`, `sqlite`, `postgres` — the shipped templates use `in_memory`) loads with a warning and the agent runs **without memory**. If the user has no Redis, say plainly that the agent will not remember between messages.
-   - Do **not** emit `guardrails` (never applied), `orchestration.timeout_seconds` (not read), `memory.semantic` / `memory.episodic` (never built), `permissions` (not enforced; `allowed_actions` is not a `respond`/`use_tools` verb list), `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
+   - Do **not** emit `orchestration.timeout_seconds` (not read), `memory.semantic` / `memory.episodic` (never built), `permissions` (not enforced; `allowed_actions` is not a `respond`/`use_tools` verb list), `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
    - No `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}` in prompts — the runtime does not provide them and they render empty. Write names literally.
 4. **Tool types.** Six types load from an agent YAML in core 0.68: `builtin`, `agent`, `client`, `integration` (v0.37.0+), `api` (v0.57.0+), `mcp` (v0.58.0+). Never emit `internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`, `webhook`, or `rag`, and never omit `type` (it defaults to `internal`): the runtime skips them with a WARNING. Each type reads a fixed set of keys (table in `schemas/astromesh-v1-agent.md`); anything else is ignored with a warning — e.g. no `rate_limit` on `agent`, no `description` on `integration`, no `requires_approval`/`timeout_seconds` anywhere.
    - Offer a **`client`** tool when the value is the call itself and no server-side action exists (show a chart, open a form, hand off to the UI): the runtime returns `{"ok": true}` and the arguments reach the live consumer through the streaming `tool_call` event.
@@ -158,7 +180,7 @@ Present the generated YAML to the user with a brief explanation covering:
 - **Name**: the RFC 1123 name chosen and why
 - **Model**: which model was selected and why
 - **Pattern**: which orchestration pattern and why
-- **Version gates**: the minimum core version the manifest needs (the highest gate among the fields you used — e.g. `knowledge.bundle` → v0.68.0, `max_result_tokens` → v0.66.0, `prompts.context`/`context_window` → v0.64.0) and whether you confirmed the node's version (`GET /v1/health`). Older nodes ignore unknown fields silently.
+- **Version gates**: the minimum core version the manifest needs (the highest gate among the fields you used — e.g. `guardrails` enforced → v0.70.0, `knowledge.bundle` → v0.68.0, `max_result_tokens` → v0.66.0, `prompts.context`/`context_window` → v0.64.0) and whether you confirmed the node's version (`GET /v1/health`). Older nodes ignore unknown fields silently.
 - **Chaining**: if you emitted `spec.chain`, which agents fire under which conditions, that every one of them must be deployed first, and that it needs a node at core v0.38.1+ (say whether you confirmed the version or not)
 - **Assumptions**: anything you assumed that the user should verify
 

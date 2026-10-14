@@ -145,7 +145,7 @@ The architect follows a 5-step process:
 - RFC 1123 compliant name (e.g., "Mario's Pizza" becomes `marios-pizza`)
 - Real, detailed system prompt tailored to the business
 - Channel-appropriate defaults (WhatsApp: 30s timeout, 256 max_tokens, 1600 char limit, 10 memory turns; Web: 120s timeout, 1024 max_tokens, 4096 char limit, 20 memory turns)
-- Guardrails (PII detection, content filtering, max length)
+- Guardrails enforced by core 0.70+ (output PII redaction, input max length, topic/content filters, per-run `cost_limit`); it skips input PII redaction when the agent's tools need phones or IDs
 - Comments in the YAML explaining non-obvious choices
 
 **Step 5 -- Write to file.** Save the YAML to `agents/<agent-name>.yaml` or a user-specified path.

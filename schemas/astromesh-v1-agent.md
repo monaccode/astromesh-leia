@@ -965,39 +965,51 @@ spec:
 
 ## spec.guardrails (optional)
 
-Input and output validation rules. Both `input` and `output` are arrays of rule objects.
-
-**Not enforced in core 0.68.** The runtime stores `spec.guardrails` (`engine.py:1263, 1585`) but never runs it: `GuardrailsEngine` has no caller in `astromesh/runtime` (nor anywhere in `astromesh/`). Every rule below describes what `core/guardrails.py` *would* do; none affects input or output today. Do not present guardrails as PII protection or a length cap.
+Input and output rules, **enforced since core 0.70.0** (`astromesh/core/guardrails.py`; on 0.68/0.69 the section is stored but never run). Both `input` and `output` are arrays of rule objects. `Agent.run` checks input before memory and model, output on the final answer (and on each streamed `token`), and the budget before every model call. Unknown types, wrong side, bad keys or invalid values are dropped with a warning at load; the agent still loads.
 
 ### Rule types
 
-| Rule Type | Applicable To | Fields | Description |
-|-----------|--------------|--------|-------------|
-| `pii_detection` | input, output | `action` | Would mask emails, phone numbers, SSNs, credit cards when `action: redact` (the default); any other action would leave the text untouched. |
-| `max_length` | **input only** | `max_chars` (integer, default 10000) | Would truncate the incoming message. **Field is `max_chars`** — `limit` is ignored. In `output` it would be a no-op (the output pass has no `max_length` branch). |
-| `topic_filter` | **input only** | `blocked_topics` (string array), `action` | Would reject (`action: block`) a message containing a blocked topic; anything else (default `warn`) would let it through. |
-| `cost_limit` | output | `max_tokens_per_turn` (integer, default 500) | Would truncate the answer to roughly that many tokens (word-based estimate). No USD field exists. |
-| `content_filter` | output | `blocked_patterns` (regex string array) | Would replace every match with `[FILTERED]`, case-insensitive. `action` is not read. |
+| Rule Type | Applies to | Keys (default) | Actions (default first) | Behaviour |
+|-----------|-----------|----------------|--------------------------|-----------|
+| `pii_detection` | input, output | - | `redact`, `block`, `warn` | Redacts emails, US-format phones (10 digits), SSNs and 16-digit card numbers with `[REDACTED_*]` tags. |
+| `topic_filter` | **input only** | `blocked_topics` (alias `forbidden_topics`) | `warn`, `block` | Case-insensitive **substring** match; `warn` only counts, `block` rejects. |
+| `max_length` | **input only** | `max_chars` (10000; alias `max_characters`) | `truncate`, `block` | Cuts or rejects an over-long incoming message. It never limits the reply. |
+| `content_filter` | **output only** | `blocked_patterns` (regex, case-insensitive), `forbidden_keywords` (literal) | `redact`, `block` | `redact` replaces each match with `[FILTERED]`. |
+| `cost_limit` | either side | `max_tokens_per_turn` (**required**, positive int), `count: output\|total` (`output`) | `block` | Output-token budget (or in+out with `count: total`) for the WHOLE run, checked before each model call; with several, the smallest wins. |
 
-> Source: `astromesh/core/guardrails.py`. The editor schema lists `redact`, `block`, `warn`, `log` as actions and `prompt_injection` as an example type, but `prompt_injection` is **not implemented** — don't rely on it. There is no runtime cap on answer length: use the prompt plus `max_tokens` on the model block.
+Every rule may carry `message` (text returned on a block; default `I can't help with that request.`). `blocked_categories` and `allowed_topics` need a classifier and are **unsupported** (warned at load) - don't emit them; use `blocked_patterns` or the system prompt. `prompt_injection`, `log` actions and `limit` are not implemented.
 
-**Example** (inert in 0.68):
+### Blocked runs
+
+A block is not an error: the run returns a normal response with `blocked: true`, the rule's `message` as the answer, and `guardrail: {direction, rule, reason}` (`direction` is `input`, `output` or `run`; `reason` never repeats the blocked content).
+
+### Caveats an author must know
+
+- **Input `pii_detection: redact` hides data from the model AND the tools.** Emails, phones, 10-digit and 16-digit numbers are replaced before anything runs, so an agent whose tools take a phone, customer ID or order number breaks. Redact on `output` instead.
+- PII patterns are US-format: an Argentine phone number is not detected.
+- `cost_limit` counts the whole run (every iteration and tool round), not one call; about 4000 suits tool-using agents.
+- `topic_filter` is substring matching, not semantic.
+- Manifests that carried `guardrails` on 0.68 start being enforced on 0.70; review them.
+
+**Example:**
 ```yaml
 guardrails:
   input:
-    - type: pii_detection
-      action: redact
     - type: max_length
-      max_chars: 4096
+      max_chars: 4000
     - type: topic_filter
       blocked_topics: [politics, religion]
-      action: warn
+      action: block
+      message: "I can only help with orders and support."
   output:
+    - type: pii_detection
+      action: redact
     - type: content_filter
       blocked_patterns:
         - "(?i)\\b(kill yourself|kys)\\b"
+      action: block
     - type: cost_limit
-      max_tokens_per_turn: 1024
+      max_tokens_per_turn: 4000
 ```
 
 ---
@@ -1163,7 +1175,7 @@ spec:
     qualified: {type: boolean}
 ```
 
-Deliberately absent: `guardrails` and `orchestration.timeout_seconds` (neither applied by the 0.68 runtime), `permissions` (not enforced in 0.68), `memory.semantic` /
+Deliberately absent: `orchestration.timeout_seconds` (not read by the runtime), `permissions` (not enforced in 0.68), `memory.semantic` /
 `episodic` (never built), `prompts.templates` (no pattern reads them), and a
 `spec.channels` block (does not exist — WhatsApp is wired at deploy time).
 

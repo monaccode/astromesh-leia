@@ -31,7 +31,7 @@ Every template follows the same `astromesh/v1` `Agent` schema:
 - **spec.prompts** -- system prompt with `{{placeholder}}` variables for business-specific content
 - **spec.orchestration** -- reasoning pattern (react or plan_and_execute), iteration limits, timeout
 - **spec.memory** -- conversation history strategy and turn limits
-- **spec.guardrails** -- input/output filters (PII detection, max message length)
+- **spec.guardrails** -- input/output rules enforced by core 0.70+ (input `max_length`, output `pii_detection`, per-run `cost_limit`)
 
 ### Template Selection Flow
 
@@ -157,17 +157,13 @@ spec:
       max_turns: 20
   guardrails:
     input:
-      # Detect and redact PII (emails, phone numbers, addresses) from user input
-      # before it reaches the model -- protects privacy in logs and training data
-      - type: pii_detection
-        action: redact
-    output:
-      # Also redact any PII the model might generate in responses
-      - type: pii_detection
-        action: redact
-      # WhatsApp messages over ~1600 chars get truncated or split awkwardly
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: pii_detection
+        action: redact
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -198,19 +194,19 @@ The customer-support template is designed for any business that receives repetit
 - `apiVersion`, `kind` -- these are structural and must remain as-is
 - `orchestration.pattern: react` -- support queries are reactive by nature; plan_and_execute adds unnecessary overhead
 - `memory.strategy: sliding_window` -- the only supported strategy currently
-- `guardrails.output.max_length` -- keep at 1600 for WhatsApp unless you change the channel
+- `guardrails.input.max_length` -- keep at 4000 for WhatsApp (its message cap is 4096); it truncates the *incoming* message. Reply length is controlled by `max_tokens` and the prompt
 
 ### Channel Considerations
 
 | Aspect | WhatsApp | Web |
 |---|---|---|
-| **Message length** | Hard limit around 4096 chars, but messages over 1600 chars become hard to read on mobile. The template enforces 1600. | No practical limit. Increase `max_length` to 4000+ for web. |
+| **Message length** | Hard limit around 4096 chars, but messages over 1600 chars become hard to read on mobile. Reply length comes from `max_tokens` and the prompt (aim well under 1600). | No practical limit. `max_tokens` and the prompt set reply length. |
 | **Formatting** | Supports bold (`*bold*`), italic (`_italic_`), strikethrough (`~strike~`), monospace. No Markdown headers or tables. | Full Markdown or HTML depending on your frontend. |
 | **Response time** | Users expect replies within 5-15 seconds. The 30s timeout is the upper safety bound. | Users tolerate 10-30 seconds. Can increase timeout to 60s. |
 | **Media** | Can send images, documents, audio. Useful for troubleshooting screenshots. | Depends on frontend implementation. |
 | **Session persistence** | WhatsApp sessions are tied to phone numbers. Memory persists across messages naturally. | Web sessions require explicit session ID management. |
 
-If switching to web, change `metadata.labels.channel` to `web`, increase `guardrails.output.max_length` to 4000, and optionally increase `max_tokens` to 2048 for more detailed responses.
+If switching to web, change `metadata.labels.channel` to `web`, raise `guardrails.input.max_length` if you expect long messages, and optionally increase `max_tokens` to 2048 for more detailed responses.
 
 ### Model Recommendations
 
@@ -364,15 +360,11 @@ spec:
       max_turns: 30
   guardrails:
     input:
-      # Redact PII from input -- phone numbers are collected as part of the
-      # reservation but should not persist in logs
-      - type: pii_detection
-        action: redact
-    output:
-      # No output PII redaction -- the agent needs to confirm back
-      # the reservation details including name and time
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -402,7 +394,7 @@ The restaurant-booking template handles the end-to-end reservation lifecycle for
 **What to leave alone:**
 
 - `orchestration.pattern: plan_and_execute` -- reservation collection is inherently sequential; react would miss steps
-- `guardrails.input.pii_detection` -- customers share phone numbers; redaction protects logs
+- no input `pii_detection` -- the agent needs the phone number the customer gives; input redaction would hide it from the model and its tools
 - `max_iterations: 8` -- the reservation flow needs these iterations to collect all fields
 
 ### Channel Considerations
@@ -586,17 +578,13 @@ spec:
       max_turns: 25
   guardrails:
     input:
-      # Redact PII -- customers may paste order confirmation emails
-      # containing addresses and payment info
-      - type: pii_detection
-        action: redact
-    output:
-      # Redact PII in output too -- the model should not echo back
-      # payment details or full addresses
-      - type: pii_detection
-        action: redact
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: pii_detection
+        action: redact
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -817,12 +805,12 @@ spec:
       # than restaurant interactions (no menu browsing)
       max_turns: 20
   guardrails:
-    # NOTE: No input PII redaction -- this is intentional.
-    # The scheduling flow requires the agent to process names and phone
-    # numbers as part of the booking. Redacting them would break the flow.
-    output:
+    input:
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -1061,15 +1049,11 @@ spec:
       max_turns: 30
   guardrails:
     input:
-      # Redact PII -- prospects may share company details and contact
-      # info that should not persist in unencrypted logs
-      - type: pii_detection
-        action: redact
-    output:
-      # No output PII redaction -- the agent may need to reference
-      # the prospect's company name or stated needs in responses
       - type: max_length
-        max_chars: 1600
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -1287,19 +1271,13 @@ spec:
       max_turns: 40
   guardrails:
     input:
-      # Redact PII -- employees may paste personal info (SSN, bank details)
-      # when asking about payroll or benefits setup
-      - type: pii_detection
-        action: redact
-    output:
-      # Also redact output PII -- the model must never surface another
-      # employee's personal details
-      - type: pii_detection
-        action: redact
-      # 4000 char limit for web -- much higher than WhatsApp's 1600.
-      # Allows detailed step-by-step instructions with proper formatting.
       - type: max_length
-        max_chars: 4000
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: pii_detection
+        action: redact
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Use Case
@@ -1346,7 +1324,7 @@ The onboarding-guide template automates the repetitive Q&A that HR and IT teams 
 | **Authentication** | No built-in auth. Anyone with the number could message. | Can integrate with SSO (Okta, Azure AD) for identity verification. |
 | **Session duration** | Sessions are phone-based. Works across days naturally. | Web sessions may expire. Ensure your frontend persists session IDs. |
 
-If you must use WhatsApp (e.g., for a field workforce without laptops), reduce `max_tokens` to 1024, `max_length` to 1600, and break the onboarding checklist into shorter daily messages.
+If you must use WhatsApp (e.g., for a field workforce without laptops), reduce `max_tokens` to 1024 and break the onboarding checklist into shorter daily messages.
 
 ### Model Recommendations
 
@@ -1547,8 +1525,12 @@ spec:
       strategy: sliding_window
       max_turns: 20               # 15-50
   guardrails:
-    input: []
-    output: []
+    input:
+      - type: max_length
+        max_chars: 4000       # WhatsApp caps a message at 4096
+    output:
+      - type: cost_limit
+        max_tokens_per_turn: 4000   # output tokens for the whole run
 ```
 
 ### Step 2: Choose Your Orchestration Pattern
@@ -1570,7 +1552,7 @@ flowchart TD
 | Decision | WhatsApp | Web |
 |---|---|---|
 | `metadata.labels.channel` | `whatsapp` | `web` |
-| `guardrails.output.max_length` | `1600` | `4000` |
+| `guardrails.input.max_length` | `4000` | `4000` |
 | `model.parameters.max_tokens` | `1024` | `2048` |
 | `orchestration.timeout_seconds` | `30` | `60` |
 | Formatting in system prompt | "Format for WhatsApp -- short paragraphs, bullet points, bold with *asterisks*" | "Use Markdown formatting with headers, tables, and code blocks" |
@@ -1596,26 +1578,27 @@ Use `{{placeholder}}` syntax for anything that changes per deployment. The leia-
 
 ### Step 6: Configure Guardrails
 
+Core 0.70+ enforces `spec.guardrails`. Rules are lists under `input` and `output`; a rule that doesn't apply to its side, has an unknown type or a bad key is dropped with a warning at load.
+
 ```yaml
 guardrails:
   input:
-    # Add PII redaction if users will share personal data
-    - type: pii_detection
-      action: redact
+    - type: max_length          # input only; truncate (default) | block
+      max_chars: 4000
   output:
-    # Add PII redaction if the model might generate personal data
-    - type: pii_detection
+    - type: pii_detection       # redact (default) | block | warn
       action: redact
-    # Always set max_length based on channel
-    - type: max_length
-      max_chars: 1600  # or 4000 for web
+    - type: cost_limit          # output tokens for the WHOLE run, checked before each model call
+      max_tokens_per_turn: 4000
 ```
 
 Rules of thumb:
-- **Always** add output `max_length` matching your channel.
-- **Add input PII redaction** unless the agent needs to process personal data as part of its core function (e.g., appointment-scheduler needs names and phone numbers).
-- **Add output PII redaction** when the model has access to personal data in its context that it should not repeat (e.g., onboarding-guide should not leak other employees' info).
-- **Skip output PII redaction** when the agent needs to confirm user-provided details back (e.g., restaurant-booking confirming reservation name and time).
+- `max_length` and `topic_filter` are **input only**; `content_filter` is **output only**; `pii_detection` and `cost_limit` work on either side. Reply length is *not* a guardrail: use `max_tokens` and the prompt.
+- **Output `pii_detection`** when the model has personal data in context that it should not repeat (e.g. onboarding-guide). **Skip it** when the agent must confirm details back (restaurant-booking, appointment-scheduler, lead-qualifier).
+- **Avoid input `pii_detection`** when the agent or its tools need phones, customer IDs or order numbers: it redacts emails, phones and 10/16-digit numbers before the model *and* tools see them.
+- PII patterns are US-format (an Argentine phone isn't detected); `topic_filter` matching is substring.
+- `cost_limit` around 4000 for tool-using agents (it counts the whole run, not one call).
+- A `block` returns a normal response with `blocked: true` and `guardrail {direction, rule, reason}`; set `message` on a rule to customize the text.
 
 ### Step 7: Set Memory Turns
 
@@ -1653,9 +1636,9 @@ flowchart TD
     H --> K{Does the agent handle sensitive data?}
     I --> K
     J --> K
-    K -->|Yes - PII, financial, medical| L[Add PII guardrails on input AND output]
-    K -->|Partially - needs to echo some data back| M[Add PII guardrails on input only]
-    K -->|No| N[Output max_length only]
+    K -->|Yes - PII, financial, medical| L[Output PII redaction + cost_limit]
+    K -->|Partially - needs to echo some data back| M[Skip PII redaction, keep cost_limit]
+    K -->|No| N[Input max_length + cost_limit]
     L --> O[Write system prompt with placeholders]
     M --> O
     N --> O
