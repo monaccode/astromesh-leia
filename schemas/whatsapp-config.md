@@ -195,8 +195,8 @@ spec:
         max_tokens: 1024       # WhatsApp messages have ~4096 char limit; keep responses concise
   orchestration:
     max_iterations: 5          # Fewer iterations = faster responses
-    # No orchestration.timeout_seconds: the 0.68 runtime does not read it (no run-level
-    # timeout). The model block's `timeout` (HTTP, per call) is the only limit.
+    # No orchestration.timeout_seconds: since core 0.71.0 it cuts the run (HTTP 504); if you
+    # set it, use >= 120 (the provider's HTTP timeout is 120 s).
 ```
 
 ### Vision Model for Images

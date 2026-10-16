@@ -47,7 +47,7 @@ Use the **real** astromesh pattern names (set `spec.orchestration.pattern`). The
 - **pipeline** — fixed sequence of named stages (`orchestration.stages`, 2–6 names, core v0.65.0+), each feeding the next. Stages get only their **name**, so describe each stage in `prompts.system`; never use `prompts.templates` for stages.
 - **parallel_fan_out** — up to 4 concurrent subtasks, then aggregates. For multi-source lookups/comparisons.
 - **supervisor** — a coordinator that only delegates to its `type: agent` tools; it **requires** at least one or the agent does not load.
-- **swarm** — do **not** emit for new agents: in core 0.68 the handoff invokes no agent and the pattern sees no conversation history. For a greeter → specialist flow use `react` with `type: agent` tools.
+- **swarm** — hands the conversation to another agent whose answer is final (core v0.71.0+). Needs at least one `type: agent` tool or the agent does not load; `orchestration.max_handoffs` (>= 1, default 3) caps the chain. For a greeter → specialist flow it is the right pattern; if the coordinator should get the answers back, use `supervisor`. On a node older than 0.71.0 use `react` with `type: agent` tools.
 - **glyph** — a Glyph program instead of a tool loop (core v0.39.0+). Only with a fixed `spec.program` (model-written programs measured far costlier than `react`), only if the node has the `glyph` extra, and `narrate: false` when the agent feeds another system.
 
 Most business agents should use **`react`**; use `plan_and_execute` for multi-step processes like reservations or onboarding. See `schemas/orchestration-patterns.md` for the full decision guide.
@@ -138,7 +138,7 @@ Apply these defaults based on the channel:
 | answer length | `max_tokens` (model) + "keep replies short" in the prompt (WhatsApp ~1600 chars) | `max_tokens` (model) |
 | `memory.conversational.max_turns` | `10` | `20` |
 
-`spec.guardrails` **is enforced from core 0.70.0** (`astromesh/core/guardrails.py`). Reply length is still not a guardrail: cap it with model `max_tokens` and the prompt. Only the model block's `timeout` is read (`engine.py:420`); `orchestration.timeout_seconds` is not.
+`spec.guardrails` **is enforced from core 0.70.0** (`astromesh/core/guardrails.py`). Reply length is still not a guardrail: cap it with model `max_tokens` and the prompt. `orchestration.timeout_seconds` is applied since core 0.71.0 (HTTP 504 on expiry): if you emit it, use **>= 120** (the provider's HTTP timeout is 120 s; 30-90 s cuts runs with tools or slow models), otherwise omit it. The model block's `timeout` is the per-call HTTP limit.
 
 ## Guardrails (core 0.70+)
 
@@ -168,7 +168,12 @@ Defaults to emit and why:
 2. **System prompt must be specific**, not a placeholder. Write a real, detailed system prompt tailored to the business description, vertical, and channel. Include the business name, what the agent does, tone of voice, boundaries, and any constraints from the channel.
 3. **Use the real section names**: `metadata`, `spec.identity`, `spec.model`, `spec.prompts.system` (+ `spec.prompts.context`), `spec.orchestration`, and as needed `spec.tools`, `spec.prefetch`, `spec.knowledge`, `spec.memory`, `spec.guardrails`, `spec.output_schema`, `spec.chain`, `spec.program`. There is **no** `spec.system_prompt` (it's `spec.prompts.system`), **no** `spec.constraints` (it's `spec.guardrails`) and **no** `spec.channels`. Memory **must be nested**: `spec.memory.conversational.{backend,connection,strategy,max_turns}` — a flat `memory:` block is ignored. The `max_length` guardrail uses `max_chars` (not `limit`) and applies to input only. Emit only what the runtime actually reads:
    - **Conversational memory that remembers needs `backend: redis` + `connection.url`.** Any other backend (`in_memory`, `sqlite`, `postgres` — the shipped templates use `in_memory`) loads with a warning and the agent runs **without memory**. If the user has no Redis, say plainly that the agent will not remember between messages.
-   - Do **not** emit `orchestration.timeout_seconds` (not read), `memory.semantic` / `memory.episodic` (never built), `permissions` (not enforced; `allowed_actions` is not a `respond`/`use_tools` verb list), `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
+   - **Core 0.71.0+ applies four sections that used to be inert** — emit them only when the user needs them and the node is at 0.71.0+:
+     - `orchestration.timeout_seconds`: **>= 120** or omit (see above).
+     - `permissions.allowed_actions` / `denied_actions`: whitelist/blacklist of **registered tool names** (`<slug>_<action>` for integration/api/mcp, `kb_*` for bundles) with `fnmatch` wildcards; `denied` wins. Only these two keys exist. A name that matches nothing leaves that tool out, so check names against the tools you declared.
+     - `memory.semantic` (`chromadb|faiss|pgvector|qdrant`, **`embeddings` required**, `dimension` required except chromadb, `connection.url` for pgvector/qdrant) and `memory.episodic` (`postgres`, `connection.url`): each needs its extra on the node; a block that cannot be built keeps the agent from loading, so only emit them when the user has the store.
+     - `pattern: swarm` (see step 3).
+   - Do **not** emit `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
    - No `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}` in prompts — the runtime does not provide them and they render empty. Write names literally.
 4. **Tool types.** Six types load from an agent YAML in core 0.68: `builtin`, `agent`, `client`, `integration` (v0.37.0+), `api` (v0.57.0+), `mcp` (v0.58.0+). Never emit `internal`, `mcp_stdio`/`mcp_sse`/`mcp_http`, `webhook`, or `rag`, and never omit `type` (it defaults to `internal`): the runtime skips them with a WARNING. Each type reads a fixed set of keys (table in `schemas/astromesh-v1-agent.md`); anything else is ignored with a warning — e.g. no `rate_limit` on `agent`, no `description` on `integration`, no `requires_approval`/`timeout_seconds` anywhere.
    - Offer a **`client`** tool when the value is the call itself and no server-side action exists (show a chart, open a form, hand off to the UI): the runtime returns `{"ok": true}` and the arguments reach the live consumer through the streaming `tool_call` event.
@@ -189,7 +194,7 @@ Present the generated YAML to the user with a brief explanation covering:
 - **Name**: the RFC 1123 name chosen and why
 - **Model**: which model was selected and why
 - **Pattern**: which orchestration pattern and why
-- **Version gates**: the minimum core version the manifest needs (the highest gate among the fields you used — e.g. `guardrails` enforced → v0.70.0, `knowledge.bundle` → v0.68.0, `max_result_tokens` → v0.66.0, `prompts.context`/`context_window` → v0.64.0) and whether you confirmed the node's version (`GET /v1/health`). Older nodes ignore unknown fields silently.
+- **Version gates**: the minimum core version the manifest needs (the highest gate among the fields you used — e.g. `timeout_seconds`/`permissions`/`memory.semantic`/`memory.episodic`/working `swarm` → v0.71.0, `guardrails` enforced → v0.70.0, `knowledge.bundle` → v0.68.0, `max_result_tokens` → v0.66.0, `prompts.context`/`context_window` → v0.64.0) and whether you confirmed the node's version (`GET /v1/health`). Older nodes ignore unknown fields silently.
 - **Eval**: the `*.eval.yaml` you emitted (or offered) and the `astromesh-eval` command to run it
 - **Chaining**: if you emitted `spec.chain`, which agents fire under which conditions, that every one of them must be deployed first, and that it needs a node at core v0.38.1+ (say whether you confirmed the version or not)
 - **Assumptions**: anything you assumed that the user should verify

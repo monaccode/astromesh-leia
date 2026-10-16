@@ -527,6 +527,12 @@ The agent endpoints are **tenant-scoped**: the target namespace is the caller's 
 > take `?period=YYYY-MM` (default: current month) and return `current_month` and `all_time`.
 > The response examples under those endpoints below are v0.3.0-era; trust the field names the
 > server actually returns.
+>
+> **Blocked runs.** Each invocation row (in `/logs` and in the invocation detail,
+> `GET /agents/:name/invocations/:id`) carries `Blocked` (bool) and `Guardrail` (the rule object)
+> **only when a guardrail rejected the run** (`omitempty`; Nexus builds after 0.26.12 persist
+> them). A core 504 `{"error":"timeout"}` (`orchestration.timeout_seconds`) closes the
+> invocation with `Status: "timeout"`.
 
 ### POST /api/v1/agents
 
@@ -940,7 +946,7 @@ Synchronous execution. Body: `{"query": "...", "session_id": "...", "context": {
 ```
 `data`, `chain` and `propuestas` appear only when the runtime produced them. **`blocked` and
 `guardrail` (core 0.70) are not forwarded by Nexus 0.26.11**: a guardrail block returns `200` with
-the rejection text in `answer`. The header `X-Nexus-Credit-Usage: <pct>` is set at 80% or more of the credit budget.
+the rejection text in `answer`. Nexus 0.26.12+ forwards them in the response (absent when nothing was blocked). The header `X-Nexus-Credit-Usage: <pct>` is set at 80% or more of the credit budget.
 
 | Code | Meaning |
 |------|---------|

@@ -1,8 +1,8 @@
 # Orchestration Patterns Reference
 
-This document describes the seven orchestration patterns available for astromesh agents (synced to **astromesh core v0.68.0**). The architect subagent uses this reference to select the right pattern for each use case.
+This document describes the seven orchestration patterns available for astromesh agents (synced to **astromesh core v0.71.0**). The architect subagent uses this reference to select the right pattern for each use case.
 
-Examples omit `orchestration.timeout_seconds`: the editor schema accepts it but the 0.68 runtime does not read it (no run-level timeout).
+Examples omit `orchestration.timeout_seconds`. Since core 0.71.0 it cuts the run (HTTP 504); if you set it, use >= 120 or omit it (the provider's HTTP timeout is 120 s).
 
 Since core **v0.65.0** an unknown `spec.orchestration.pattern` is an `AgentConfigError` — the agent does not load (it used to fall back to `react` silently). An explicit `pattern: null` is `react`.
 
@@ -15,7 +15,7 @@ Since core **v0.65.0** an unknown `spec.orchestration.pattern` is an `AgentConfi
 | `parallel_fan_out` | Tasks where multiple independent sub-tasks can run simultaneously | Splits the task into independent sub-tasks, executes them in parallel, then aggregates results. | Competitive analysis agent querying 5 competitor APIs simultaneously. |
 | `pipeline` | Sequential data transformation workflows | Passes output from one stage as input to the next in a fixed sequence of named stages (`orchestration.stages`, core v0.65.0+). | Content pipeline: draft -> fact-check -> edit -> format. |
 | `supervisor` | Coordinating multiple specialized sub-agents | A coordinator that **only** delegates to its workers — the agent's `type: agent` tools — and answers with what they returned. | Project management agent delegating to design, engineering, and QA agents. |
-| `swarm` | *(avoid in 0.68 — see below)* | A single-model loop that may emit a JSON "handoff"; in the 0.68 runtime the handoff invokes no agent. | — |
+| `swarm` | Handing the conversation to another agent that answers for good (core 0.71.0+) | A tool loop whose `type: agent` tools are the handoff targets; calling one passes control and the target's answer **is** the final answer. | Greeter that routes to a billing or a technical-support agent. |
 | `glyph` | Deterministic multi-tool procedures (core v0.39.0+) | The plan is a Glyph **program**: the model writes it (expensive) or `spec.program` fixes it ahead of time (zero planning calls). | Fixed lookup chain: find customer -> list devices -> check warranty for each. |
 
 ### Conversation awareness (core v0.64.0 / v0.65.0)
@@ -30,12 +30,12 @@ Which patterns see the conversation history and the per-turn `prompts.context`:
 | `parallel_fan_out` | the decomposer and synthesizer (v0.65.0+); subtasks without history | yes | yes |
 | `pipeline` | **first stage only** (v0.65.0+) | yes | yes |
 | `supervisor` | yes (rewritten on native tools in v0.65.0) | yes | yes |
-| `swarm` | **no** — sees only the current query | no — appended to the system prompt, with a load-time warning | no |
+| `swarm` | yes (0.71.0+) | yes (0.71.0+) | yes (0.71.0+) |
 
 Before v0.65.0, `plan_and_execute`, `pipeline` and `parallel_fan_out` did not see
 the conversation at all; before v0.64.0 history only reached the model when the
 system prompt rendered `memory.conversation`. For a conversational agent (WhatsApp,
-chat) on a v0.65.0+ node any pattern except `swarm` keeps context; on older nodes,
+chat) on a v0.65.0+ node any pattern keeps context (`swarm` joined at 0.71.0); on older nodes,
 use `react`.
 
 ### A pattern is not a chain (astromesh core v0.38.1+)
@@ -52,9 +52,9 @@ Two neighbouring patterns are easy to reach for by mistake:
 
 - **`pipeline`** moves a value through stages *inside a single agent*, with one
   model call per stage. Use it when the stages are steps of one job.
-- **`swarm`** is *meant* to hand the conversation from one agent to another at
-  runtime, but in core 0.68 the handoff invokes nobody (see the `swarm` section).
-  To pass a human along, use `react` with `type: agent` tools.
+- **`swarm`** hands the conversation from one agent to another at runtime and the
+  target answers for good (core 0.71.0+, see the `swarm` section). Use `supervisor`
+  instead when the coordinator should get the workers' answers back.
 - **`spec.chain`** fires other agents after this one is done, on conditions you
   declare, and the routing is deterministic and inspectable before it runs.
 
@@ -336,24 +336,31 @@ spec:
 
 ## swarm
 
-### Status in core 0.68 — do not emit for new agents
+### How it works (core 0.71.0+)
 
-The pattern exists and the name is valid, but read the runtime before choosing it:
+- The target agents are the manifest's `type: agent` tools. With none, the agent does not load (`AgentConfigError`, same as `supervisor`).
+- Handing over = calling that tool. If the target answers, **its answer is the final answer** — it does not come back to the agent that delegated (unlike `supervisor`). An error from the target (rate limit, permission, `confirmacion_requerida`...) returns to the model like any tool result.
+- The target receives the conversation history in its `query`.
+- `orchestration.max_handoffs` (integer >= 1, default 3) caps chained handoffs. The runtime carries the counter to the child agent, so every sub-agent inherits it; a `_handoffs` written by the model or by the caller in the run context does not lower it. At the cap, handoffs are no longer offered or executed.
+- It reads history, receives `prompts.context` as a message and honours the tool-result budget. It no longer adds its own system prompt or interprets a JSON `{"handoff": ...}`.
+- On a node older than 0.71.0 the handoff invokes nobody: use `react` with `type: agent` tools there.
 
-- The engine builds `SwarmPattern()` with **no peer agents** (`runtime/engine.py`, `_build_pattern`), so when the model answers with a handoff JSON (`{"handoff": "<agent>", "context": "…"}`) the runtime only relabels the loop — **no other agent is invoked**. The same model keeps answering.
-- It sends the model **only the current query** — no conversation history — so a WhatsApp/chat agent on `swarm` forgets everything between messages.
-- `prompts.context` is not separated (appended to the system prompt, with a load-time warning), and the v0.66.0 tool-result budget does not apply.
-- Core v0.65.0 rewrote `plan_and_execute`, `pipeline`, `parallel_fan_out` and `supervisor`; `swarm` was explicitly left unchanged.
+```yaml
+orchestration:
+  pattern: swarm
+  max_handoffs: 3
+tools:
+  - {name: billing, type: agent, agent: billing-agent, description: "Invoices and payments"}
+  - {name: support, type: agent, agent: tech-support, description: "Technical problems"}
+```
 
-### What to use instead
+### Swarm or something else
 
 | The user wants… | Emit |
 |---|---|
-| A conversation passed from a greeter to a specialist | `react` (or `supervisor`) with one `type: agent` tool per specialist |
+| A conversation passed from a greeter to a specialist who answers for good | `swarm` |
+| The coordinator to get the specialists' answers and compose | `supervisor` |
 | Something to happen *after* this agent finishes | `spec.chain` (core v0.38.1+) |
-| A coordinator that only routes | `supervisor` |
-
-If a user explicitly asks for `swarm`, emit it but tell them the three limits above.
 
 ---
 
@@ -441,6 +448,6 @@ START: What kind of task is this?
 - Use `pipeline` only when you can define the exact stages upfront.
 - Use `parallel_fan_out` when latency matters and sub-tasks are independent.
 - Use `supervisor` when you have 2-5 specialized agents and the coordinator only routes.
-- Do not emit `swarm` for new agents in core 0.68 (no real handoff, no history).
+- Use `swarm` when the specialist should answer for good (needs core 0.71.0+ and at least one `type: agent` tool); otherwise `supervisor`.
 - Use `glyph` only with a fixed `spec.program`, never as a model-written default.
 - Use `plan_and_execute` for complex research or analysis tasks.
