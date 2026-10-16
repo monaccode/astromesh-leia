@@ -1,6 +1,6 @@
 ---
 description: "Deploy an agent YAML file to the nexus cluster"
-argument-hint: "<yaml-file> [--tenant <name>]"
+argument-hint: "<yaml-file> [--tenant <name>] [--node <url>]"
 ---
 
 # /leia deploy — Deploy Agent YAML to Cluster
@@ -14,6 +14,16 @@ Parse `$ARGUMENTS` for:
 - **--tenant <name>** — optional tenant namespace override
 
 ## Flow
+
+### Standalone node target (`--node`)
+
+For a standalone `astromeshd` node (astromesh-node 0.1.10, core 0.60.0+), not Nexus:
+
+1. Copy the YAML to `<config_dir>/agents/<name>.agent.yaml` (system install: `/etc/astromesh`), plus any `rag/*.rag.yaml` and knowledge bundle it needs under the config dir.
+2. Reload without restarting: `sudo systemctl reload astromeshd` (SIGHUP; also works with `--foreground`). It calls `AgentRuntime.reload()`, which computes `{added, updated, removed, failed}`; an agent that fails to build stays `draft` with its error and does not affect the others. `runtime.yaml` changes need a restart. Reload is refused when `ASTROMESH_PERSIST_AGENTS=0`.
+3. Verify with `GET <node>/v1/agents` and `GET <node>/v1/agents/<name>`; smoke-test with `POST <node>/v1/agents/<name>/run` (the node returns `blocked`/`guardrail` directly).
+4. Alternative without disk access: `POST <node>/v1/agents` with the agent as JSON (`201`, `409` if it exists), `PUT /v1/agents/<name>` to update.
+5. `astromeshctl validate --path <config_dir>` (from astromesh-node) checks the YAML files before you reload.
 
 ### Case 1: File Path Provided
 

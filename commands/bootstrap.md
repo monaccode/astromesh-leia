@@ -95,7 +95,7 @@ Ask the user for their API key (should start with `nxk_`).
 ### Step 4 — Test authentication
 
 ```bash
-curl -sf -H "Authorization: Bearer <api-key>" <url>/api/v1/tenants
+curl -sf -H "X-API-Key: <api-key>" <url>/api/v1/tenants
 ```
 
 If it fails, report the auth error and ask the user to verify the key.

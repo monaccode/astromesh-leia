@@ -482,7 +482,7 @@ The doctor runs checks in strict order. If a check fails, all dependent downstre
 | # | Check | Command | Depends On | Failure Means |
 |---|---|---|---|---|
 | 1 | Nexus API reachable | `curl /healthz` | -- | Cluster not running or nexus not deployed |
-| 2 | API authentication | `curl -H "Authorization" /api/v1/agents` | 1 | Invalid or expired API key |
+| 2 | API authentication | `curl -H "X-API-Key: <key>" /api/v1/agents` | 1 | Invalid or expired API key |
 | 3 | Tenant exists | `kubectl get nexustenant` | 1 | Cluster not fully bootstrapped |
 | 4 | Agent CR exists | `kubectl get nexusagent -n <tenant>` | 3 | Agent not deployed or wrong namespace |
 | 5 | Node pod running | `kubectl get pods -l managed-by=nexus` | 4 | Pod crash, scheduling issue, or resource limit |

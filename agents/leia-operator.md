@@ -30,18 +30,21 @@ Deploy an agent YAML to the cluster.
 ```bash
 curl -s -X POST "${NEXUS_URL}/api/v1/agents" \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Bearer ${API_KEY}" \
+  -H "X-API-Key: ${API_KEY}" \
   --data-binary @<agent-file>.yaml
 ```
 
-After deploying, poll status every 5 seconds for up to 60 seconds:
+A successful create answers `201`. If the tenant has a subscription, publish with `?subscription_id=<id>`
+(`404` unknown, `422` inactive). Then confirm the agent is registered and, once it has a live version, smoke-test it:
 
 ```bash
-curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+curl -s "${NEXUS_URL}/api/v1/agents/<name>" -H "X-API-Key: ${API_KEY}"
+curl -s "${NEXUS_URL}/api/v1/agents/<name>/status" -H "X-API-Key: ${API_KEY}"   # recent invocations
 ```
 
-Report when the agent reaches `Ready` phase, or timeout with current status.
+Nexus 0.26 stores agents as versions in a database; there is no `Ready` phase to wait for. A run on an
+agent without a live version returns `422` ("agent has no live version (draft)"). Report the created
+version and any `400 problems[]` verbatim.
 
 ### List
 
@@ -49,7 +52,7 @@ List all agents in the cluster.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Format the response as a table with columns: NAME, STATUS, MODEL, CHANNEL, AGE.
@@ -60,7 +63,7 @@ Get details for a specific agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 ### Delete
@@ -69,7 +72,7 @@ Delete an agent from the cluster.
 
 ```bash
 curl -s -X DELETE "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Confirm deletion with the user before executing. After deletion, verify the agent is gone.
@@ -80,10 +83,10 @@ Retrieve logs for an agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>/logs" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
-Stream the last 100 lines by default. If the user asks for more, adjust the `?lines=` query parameter.
+Returns the agent's last 100 invocations from the Nexus database (not container logs). There is no `lines` parameter; for older history use the invocations endpoint.
 
 ### Metrics
 
@@ -91,7 +94,7 @@ Get metrics for an agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>/metrics" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Format as a readable summary: request count, avg latency, error rate, uptime.

@@ -1,6 +1,6 @@
 ---
 description: "View logs for a deployed agent"
-argument-hint: "<agent-name> [--follow] [--lines <n>]"
+argument-hint: "<agent-name> [--follow]"
 ---
 
 # /leia logs — View Agent Logs
@@ -12,7 +12,6 @@ You are the **logs** command handler for the astromesh-leia CLI plugin. You fetc
 Parse `$ARGUMENTS` for:
 - **agent-name** — positional argument, the name of the agent
 - **--follow** or **-f** — optional flag to continuously poll for new logs
-- **--lines <n>** or **-n <n>** — optional, number of log lines to fetch (default: 50)
 
 ## Flow
 
@@ -23,17 +22,17 @@ Parse `$ARGUMENTS` for:
 Dispatch **leia-operator** to retrieve logs:
 
 ```bash
-curl -s -X GET "${NEXUS_URL}/api/v1/agents/<agent-name>/logs?lines=<n>" \
-  -H "Authorization: Bearer ${API_KEY}"
+curl -s -X GET "${NEXUS_URL}/api/v1/agents/<agent-name>/logs" \
+  -H "X-API-Key: ${API_KEY}"
 ```
 
-Display the log output to the user. If the response is empty, inform the user: "No logs available yet for `<agent-name>`. The agent may not have received any requests."
+Nexus returns the last 100 invocations of the agent from its database (it is not a container log; there is no `lines` parameter). Display them to the user. If the response is empty, inform the user: "No logs available yet for `<agent-name>`. The agent may not have received any requests."
 
 #### Step 2 — Follow Mode
 
 If `--follow` or `-f` is specified:
 - After displaying initial logs, poll every 5 seconds for new log entries.
-- Display only new lines on each poll (track the last seen timestamp or line count).
+- Display only new invocations on each poll (track the last seen timestamp).
 - Continue until the user interrupts or says "stop".
 - Show a hint: "Following logs for `<agent-name>`... (say 'stop' to end)"
 

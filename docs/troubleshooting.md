@@ -343,7 +343,7 @@ A consolidated reference of the most useful commands for diagnosing and resolvin
 | Command | Description |
 |---------|-------------|
 | `curl -s <nexus-url>/healthz` | Test nexus API health endpoint |
-| `curl -s -H "Authorization: Bearer <key>" <nexus-url>/api/v1/agents` | Test API authentication |
+| `curl -s -H "X-API-Key: <key>" <nexus-url>/api/v1/agents` | Test API authentication |
 | `ollama list` | List available Ollama models |
 | `ollama pull <model-name>` | Download a model for Ollama |
 | `ngrok http 8080` | Start an ngrok tunnel for local webhook testing |

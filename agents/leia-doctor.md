@@ -34,12 +34,12 @@ curl -s -o /dev/null -w "%{http_code}" "${NEXUS_URL}/healthz"
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer ${API_KEY}" \
+  -H "X-API-Key: ${API_KEY}" \
   "${NEXUS_URL}/api/v1/agents"
 ```
 
 - **200** — OK, API key is valid
-- **401** — API key is invalid or expired. Check `~/.astromesh-leia/config.yaml`
+- **401** — API key is invalid or expired, or it was sent as `Authorization: Bearer` (Nexus reads API keys only from `X-API-Key`). Check `~/.astromesh-leia/config.yaml`
 
 ### 3. Tenant Exists
 

@@ -1,6 +1,6 @@
 ---
 description: "Test a deployed agent — interactive chat or automated test scenarios"
-argument-hint: "<agent-name> [--auto]"
+argument-hint: "<agent-name> [--auto] [--eval]"
 ---
 
 # /leia test — Test a Deployed Agent
@@ -12,6 +12,7 @@ You are the **test** command handler for the astromesh-leia CLI plugin. You test
 Parse `$ARGUMENTS` for:
 - **agent-name** — positional argument, the name of the agent to test
 - **--auto** — optional flag to run automated test scenarios instead of interactive chat
+- **--eval** — do not chat; locate or generate `<agent>.eval.yaml` (see `schemas/astromesh-v1-eval.md`) and hand the user `astromesh-eval <config_dir> --out report.json` (needs core v0.67.0+ and the agent's config directory locally; it does not run against Nexus). If `astromesh-eval` is available, run it and summarise pass_rate, failed cases and their `motivos` (exit 0 ok, 1 under threshold, 2 load error)
 
 ## Flow
 
@@ -19,9 +20,9 @@ Parse `$ARGUMENTS` for:
 
 Before starting any test, read `~/.astromesh-leia/config.yaml` for cluster connection details, then check the agent's status:
 
-Dispatch **leia-operator** to get the agent status. If the agent is not in `Ready` phase:
-- Show current phase and conditions
-- Suggest: "Agent is not ready yet. Run `/leia status <agent-name>` to monitor or `/leia logs <agent-name>` to debug."
+Dispatch **leia-operator** to get the agent (`GET /api/v1/agents/<agent-name>`). Nexus 0.26 has no `Ready` phase: the agent is testable when that call succeeds and it has a live (published) version. If it doesn't:
+- Show what the call returned (not found, or only a draft version)
+- Suggest: "Agent has no live version yet. Publish it, or run `/leia status <agent-name>` / `/leia logs <agent-name>` to debug."
 - Do not proceed with testing
 
 ### Step 2 — Dispatch Tester
@@ -50,6 +51,7 @@ Pass to leia-tester with mode `automated`:
 - Each scenario sends a message and evaluates the response on: relevance, tone, accuracy, channel compliance, boundary respect
 - Results are displayed as a table with pass/fail for each scenario
 - A summary with suggestions for improvements is shown at the end
+- Guardrail blocks are reported separately: an expected block (guardrail probe) passes, an unexpected block fails with the rule named (see the tester's *Response Contract*)
 
 Before starting, display:
 ```
@@ -60,14 +62,14 @@ Running automated tests for <agent-name>...
 
 When no agent name is provided:
 
-1. Dispatch **leia-operator** to list all agents in `Ready` phase.
+1. Dispatch **leia-operator** to list all agents that have a live version.
 2. Display the list and ask the user which agent to test:
    ```
    Which agent would you like to test?
-     1. marios-pizza (Ready, whatsapp)
-     2. support-bot (Ready, web)
+     1. marios-pizza (live, whatsapp)
+     2. support-bot (live, web)
    ```
-3. If no agents are in `Ready` phase: "No agents are currently ready for testing. Run `/leia status` to check agent states."
+3. If no agent has a live version: "No agents are published yet. Run `/leia status` to check agent states."
 4. Once the user selects, proceed with testing that agent.
 
 ## Error Handling
