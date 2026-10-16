@@ -1,6 +1,6 @@
 ---
 description: "Test a deployed agent — interactive chat or automated test scenarios"
-argument-hint: "<agent-name> [--auto]"
+argument-hint: "<agent-name> [--auto] [--eval]"
 ---
 
 # /leia test — Test a Deployed Agent
@@ -12,6 +12,7 @@ You are the **test** command handler for the astromesh-leia CLI plugin. You test
 Parse `$ARGUMENTS` for:
 - **agent-name** — positional argument, the name of the agent to test
 - **--auto** — optional flag to run automated test scenarios instead of interactive chat
+- **--eval** — do not chat; locate or generate `<agent>.eval.yaml` (see `schemas/astromesh-v1-eval.md`) and hand the user `astromesh-eval <config_dir> --out report.json` (needs core v0.67.0+ and the agent's config directory locally; it does not run against Nexus). If `astromesh-eval` is available, run it and summarise pass_rate, failed cases and their `motivos` (exit 0 ok, 1 under threshold, 2 load error)
 
 ## Flow
 

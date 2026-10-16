@@ -135,6 +135,7 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
+| 0.8.x | 0.26.x | 0.29 – 0.70.x |
 | 0.7.x | 0.3.x ¹ | 0.29 – 0.70.x |
 | 0.6.x | 0.3.x ¹ | 0.29 – 0.68.x |
 | 0.5.x | 0.3.x | 0.29 – 0.38.x |
@@ -142,7 +143,7 @@ claude plugins add ./astromesh-leia
 | 0.2.x | 0.3.x | 0.18 – 0.28.9 |
 | 0.1.x | 0.1.x | 0.18+ |
 
-¹ Leia's Nexus operations (deploy, status, logs, teardown) still target the Nexus 0.3.x API. Leia 0.7 knows the agent manifest up to core 0.70, but it does not yet speak to newer Nexus releases (0.26.x expects a different auth header); that sync is pending.
+¹ Leia 0.7 and earlier sent API keys as `Authorization: Bearer` (rejected by Nexus 0.26) and described the Nexus 0.3.0 API. Leia 0.8 uses `X-API-Key` and the 0.26.11 API. Eval authoring needs core 0.67+, knowledge bundles 0.68+, guardrails 0.70+, standalone reload astromesh-node 0.1.4+ (core 0.60+).
 
 ## License
 

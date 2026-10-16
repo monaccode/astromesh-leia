@@ -109,6 +109,15 @@ Prompt placement, every time:
 
 If you cannot confirm the node is at core v0.68.0+, emit `pipeline` only (or no knowledge) and offer the bundle as a labelled follow-up.
 
+Authoring the knowledge itself (do it when the user supplies documents, not just a manifest):
+
+- **Bundle**: write the directory per `schemas/okf-bundle.md` (one concept per file, `type` required, `status`/`verified`/`stale_after` set honestly — never mark `verified` human-reviewed on content nobody reviewed). **The Nexus runtime pool mounts no bundles** (Nexus 0.26.9–0.26.11), so on Nexus a `knowledge.bundle` agent starts without it; use a standalone node, or `knowledge.pipeline`.
+- **Pipeline**: write `config/rag/<name>.rag.yaml` per `schemas/astromesh-v1-rag.md`.
+
+### 5b. Generate an Eval
+
+For every agent you generate, offer a `<name>.eval.yaml` (`kind: Eval`, core v0.67.0+, format in `schemas/astromesh-v1-eval.md`): 4-6 cases (happy path, a tool case with fixtures, out-of-scope, and a guardrail probe if `spec.guardrails` is set), `tools_default: block` when the agent has write tools, and a `pass_rate` threshold. It lives in `<config_dir>/evals/` and runs with `astromesh-eval <config_dir>`; it does not run against Nexus.
+
 ### 6. Generate the YAML
 
 Produce a complete, valid `astromesh/v1` Agent YAML manifest.
@@ -181,6 +190,7 @@ Present the generated YAML to the user with a brief explanation covering:
 - **Model**: which model was selected and why
 - **Pattern**: which orchestration pattern and why
 - **Version gates**: the minimum core version the manifest needs (the highest gate among the fields you used — e.g. `guardrails` enforced → v0.70.0, `knowledge.bundle` → v0.68.0, `max_result_tokens` → v0.66.0, `prompts.context`/`context_window` → v0.64.0) and whether you confirmed the node's version (`GET /v1/health`). Older nodes ignore unknown fields silently.
+- **Eval**: the `*.eval.yaml` you emitted (or offered) and the `astromesh-eval` command to run it
 - **Chaining**: if you emitted `spec.chain`, which agents fire under which conditions, that every one of them must be deployed first, and that it needs a node at core v0.38.1+ (say whether you confirmed the version or not)
 - **Assumptions**: anything you assumed that the user should verify
 
