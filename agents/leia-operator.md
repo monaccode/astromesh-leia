@@ -30,7 +30,7 @@ Deploy an agent YAML to the cluster.
 ```bash
 curl -s -X POST "${NEXUS_URL}/api/v1/agents" \
   -H "Content-Type: application/yaml" \
-  -H "Authorization: Bearer ${API_KEY}" \
+  -H "X-API-Key: ${API_KEY}" \
   --data-binary @<agent-file>.yaml
 ```
 
@@ -38,7 +38,7 @@ After deploying, poll status every 5 seconds for up to 60 seconds:
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Report when the agent reaches `Ready` phase, or timeout with current status.
@@ -49,7 +49,7 @@ List all agents in the cluster.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Format the response as a table with columns: NAME, STATUS, MODEL, CHANNEL, AGE.
@@ -60,7 +60,7 @@ Get details for a specific agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 ### Delete
@@ -69,7 +69,7 @@ Delete an agent from the cluster.
 
 ```bash
 curl -s -X DELETE "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Confirm deletion with the user before executing. After deletion, verify the agent is gone.
@@ -80,7 +80,7 @@ Retrieve logs for an agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>/logs" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Stream the last 100 lines by default. If the user asks for more, adjust the `?lines=` query parameter.
@@ -91,7 +91,7 @@ Get metrics for an agent.
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>/metrics" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Format as a readable summary: request count, avg latency, error rate, uptime.

@@ -23,7 +23,7 @@ When the user wants to manually chat with a deployed agent:
    ```bash
    curl -s -X POST "${NEXUS_URL}/api/v1/agents/<name>/run" \
      -H "Content-Type: application/json" \
-     -H "Authorization: Bearer ${API_KEY}" \
+     -H "X-API-Key: ${API_KEY}" \
      -d '{"query": "<user message>", "session_id": "<session_id>"}'
    ```
 3. Display the agent's response to the user.

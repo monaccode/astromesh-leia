@@ -34,8 +34,12 @@ the request to one of your tenants (required for tenant-scoped operations such a
 endpoints). Nexus verifies that the authenticated user owns that tenant; if not it returns
 `403 Forbidden`.
 
-The middleware tries the `Authorization: Bearer` token first, then falls back to `X-API-Key`. A
-protected request with neither a valid JWT nor a valid API key receives `401 Unauthorized`.
+The middleware tries the `Authorization: Bearer` token first (validated **only as a JWT**), then
+falls back to `X-API-Key`. **An `nxk_` API key sent as `Authorization: Bearer nxk_...` is not a
+JWT and is rejected with `401`** — API keys travel only in `X-API-Key`. A protected request with
+neither a valid JWT nor a valid API key receives `401 Unauthorized`.
+
+Leia always sends its configured key as `X-API-Key: ${API_KEY}`.
 
 ## Error Format
 

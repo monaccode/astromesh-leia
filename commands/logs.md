@@ -24,7 +24,7 @@ Dispatch **leia-operator** to retrieve logs:
 
 ```bash
 curl -s -X GET "${NEXUS_URL}/api/v1/agents/<agent-name>/logs?lines=<n>" \
-  -H "Authorization: Bearer ${API_KEY}"
+  -H "X-API-Key: ${API_KEY}"
 ```
 
 Display the log output to the user. If the response is empty, inform the user: "No logs available yet for `<agent-name>`. The agent may not have received any requests."
