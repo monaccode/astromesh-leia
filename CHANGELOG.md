@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-16
+
+Sincroniza Leia con el ecosistema actual: Nexus **0.26.11**, core **0.70.0**,
+astromesh-node 0.1.10.
+
+### Fixed
+
+- **Autenticación contra Nexus.** operator, tester, doctor, `bootstrap` y `logs`
+  mandaban la API key como `Authorization: Bearer nxk_...`; Nexus valida el
+  Bearer solo como JWT y lee las API keys únicamente de `X-API-Key`, así que
+  todas las operaciones daban 401. Ahora usan `X-API-Key`.
+
+### Changed
+
+- **`schemas/nexus-api.md`** pasa de Nexus v0.3.0 a 0.26.11, tomado del router y
+  los handlers: `/run`, `/run/stream`, invocations, metrics/usage, versiones,
+  catálogo, conexiones, suscripciones, `/messages/send`, plano `/admin` y
+  publicación con `?subscription_id=`, con sus códigos 402/422/429.
+  `/status` y `/logs` leen invocaciones de la base.
+- **Tester**: entiende la respuesta de 0.70 (`blocked`/`guardrail`, `propuestas`,
+  `usage.by_model`). Un bloqueo esperado aprueba, uno inesperado falla con la
+  regla. Nexus 0.26.11 no reenvía `blocked`/`guardrail`; se infiere del `answer`.
+- **operator**: sin fase `Ready`; el deploy confirma el registro y el smoke test.
+- **README**: tabla de compatibilidad Leia 0.8.x / Nexus 0.26.x / core 0.29 - 0.70.x.
+
+### Added
+
+- `schemas/astromesh-v1-eval.md` (`kind: Eval`, `astromesh-eval`), el architect
+  ofrece un eval por agente y `/leia test --eval`.
+- `schemas/okf-bundle.md` (formato OKF v0.2). El pool de Nexus no monta bundles
+  (verificado en su deployment y changelog): solo nodos standalone.
+- `schemas/astromesh-v1-rag.md` (`kind: RAGPipeline`).
+- `/leia deploy --node`: copia a `config/agents/`, `systemctl reload astromeshd`
+  y verificación (astromesh-node, core 0.60+).
+
 ## [0.7.0] - 2026-10-14
 
 Sincroniza el conocimiento de Leia con astromesh **core v0.70.0**, donde
