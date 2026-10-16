@@ -50,6 +50,7 @@ Pass to leia-tester with mode `automated`:
 - Each scenario sends a message and evaluates the response on: relevance, tone, accuracy, channel compliance, boundary respect
 - Results are displayed as a table with pass/fail for each scenario
 - A summary with suggestions for improvements is shown at the end
+- Guardrail blocks are reported separately: an expected block (guardrail probe) passes, an unexpected block fails with the rule named (see the tester's *Response Contract*)
 
 Before starting, display:
 ```
