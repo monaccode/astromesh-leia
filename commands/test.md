@@ -20,9 +20,9 @@ Parse `$ARGUMENTS` for:
 
 Before starting any test, read `~/.astromesh-leia/config.yaml` for cluster connection details, then check the agent's status:
 
-Dispatch **leia-operator** to get the agent status. If the agent is not in `Ready` phase:
-- Show current phase and conditions
-- Suggest: "Agent is not ready yet. Run `/leia status <agent-name>` to monitor or `/leia logs <agent-name>` to debug."
+Dispatch **leia-operator** to get the agent (`GET /api/v1/agents/<agent-name>`). Nexus 0.26 has no `Ready` phase: the agent is testable when that call succeeds and it has a live (published) version. If it doesn't:
+- Show what the call returned (not found, or only a draft version)
+- Suggest: "Agent has no live version yet. Publish it, or run `/leia status <agent-name>` / `/leia logs <agent-name>` to debug."
 - Do not proceed with testing
 
 ### Step 2 — Dispatch Tester
@@ -62,14 +62,14 @@ Running automated tests for <agent-name>...
 
 When no agent name is provided:
 
-1. Dispatch **leia-operator** to list all agents in `Ready` phase.
+1. Dispatch **leia-operator** to list all agents that have a live version.
 2. Display the list and ask the user which agent to test:
    ```
    Which agent would you like to test?
-     1. marios-pizza (Ready, whatsapp)
-     2. support-bot (Ready, web)
+     1. marios-pizza (live, whatsapp)
+     2. support-bot (live, web)
    ```
-3. If no agents are in `Ready` phase: "No agents are currently ready for testing. Run `/leia status` to check agent states."
+3. If no agent has a live version: "No agents are published yet. Run `/leia status` to check agent states."
 4. Once the user selects, proceed with testing that agent.
 
 ## Error Handling

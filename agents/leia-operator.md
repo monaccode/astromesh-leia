@@ -86,7 +86,7 @@ curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>/logs" \
   -H "X-API-Key: ${API_KEY}"
 ```
 
-Stream the last 100 lines by default. If the user asks for more, adjust the `?lines=` query parameter.
+Returns the agent's last 100 invocations from the Nexus database (not container logs). There is no `lines` parameter; for older history use the invocations endpoint.
 
 ### Metrics
 
