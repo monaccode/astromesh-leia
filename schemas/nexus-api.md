@@ -2,7 +2,7 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
-> **Version:** This reference reflects **astromesh-nexus v0.3.0**, which introduced the user auth system, tenant management, and API-key management on top of the existing agent endpoints. Custom resources (`NexusAgent`, `NexusTenant`) are served at API version `v1alpha1`.
+> **Version:** This reference reflects **astromesh-nexus v0.26.11** (pool on astromesh core 0.70.0), re-derived from the router (`internal/server/server.go`) and handlers. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* for what was added.
 
 ## Base URL
 
@@ -522,9 +522,11 @@ The agent endpoints are **tenant-scoped**: the target namespace is the caller's 
 > `Content-Type: application/x-yaml` and send it with `--data-binary @agent.yaml`. The agent name is
 > taken from `metadata.name` in the manifest, not from the URL on create.
 >
-> **Proxied endpoints:** `/status`, `/logs`, and `/metrics` proxy to the tenant's astromesh-node and
-> may return `502 Bad Gateway` if the node is unreachable. In current builds `/logs` is a thin /
-> placeholder response.
+> **Observability endpoints:** in 0.26 `/status` and `/logs` return the agent's recent invocations
+> (20 and 100 rows) read from the database, not a live proxy to the node. `/metrics` and `/usage`
+> take `?period=YYYY-MM` (default: current month) and return `current_month` and `all_time`.
+> The response examples under those endpoints below are v0.3.0-era; trust the field names the
+> server actually returns.
 
 ### POST /api/v1/agents
 
@@ -907,6 +909,109 @@ curl http://localhost:8080/api/v1/agents/sales-qualifier/metrics \
   -H "X-API-Key: nxk_abc123..." \
   -G -d "period=24h"
 ```
+
+---
+
+## Execution, Platform and Operator Endpoints (Nexus 0.26)
+
+Source: `internal/server/server.go`, `handlers/invocations.go`, `invocations_stream.go`,
+`middleware.go`. All `/api/v1/*` routes except `/api/v1/runs/*` and `/api/v1/admin/*` use
+`DualAuthMiddleware` (API key in `X-API-Key`, or JWT Bearer + `X-Tenant-ID`). An operator JWT
+(`isOperator` claim) may send any `X-Tenant-ID` without owning the tenant.
+
+Some routes exist only when the deployment wires the dependency: tenant and key routes need the
+Kubernetes client, `/catalog` and `/run*` need the runtime client, `/messages/send` and `/runs/*`
+need Herald (the messaging gateway). A missing route is a deployment fact, not a Leia bug.
+
+### POST /api/v1/agents/:name/run
+
+Synchronous execution. Body: `{"query": "...", "session_id": "...", "context": {...}}`
+(`session_id` defaults to `default`). Optional `Idempotency-Key` header (reuse by another request: `409`).
+
+**200:**
+```json
+{
+  "invocation_id": "inv_...", "status": "ok", "answer": "...",
+  "usage": {"tokens_in": 120, "tokens_out": 40,
+            "by_model": [{"provider": "...", "model": "...", "role": "default", "calls": 1,
+                          "tokens_in": 120, "tokens_out": 40, "tokens_cached": 0, "cost": 0.0}]},
+  "credits_charged_micros": 0, "pricing_status": "..."
+}
+```
+`data`, `chain` and `propuestas` appear only when the runtime produced them. **`blocked` and
+`guardrail` (core 0.70) are not forwarded by Nexus 0.26.11**: a guardrail block returns `200` with
+the rejection text in `answer`. The header `X-Nexus-Credit-Usage: <pct>` is set at 80% or more of the credit budget.
+
+| Code | Meaning |
+|------|---------|
+| `400` | Invalid body. |
+| `402` | Credit budget exhausted (`credit budget exhausted for this period`, or the subscription code `subscription_credit_budget_exhausted`). |
+| `404` | Agent not found. |
+| `409` | Idempotency key belongs to another request. |
+| `422` | Agent has no live version (draft), or the subscription is inactive (`subscription_inactive`; retrying does not help). |
+| `429` | Rate limited (`too many requests in this minute`) or too many concurrent invocations. |
+| `502` / `504` | Runtime could not load the agent / load timed out. |
+| `503` | Tenant or subscription limits, or the invocation record, could not be resolved; the run is not executed. |
+
+A run that fails in the runtime returns an error body with `invocation_id` and `status` (`error` or `timeout`).
+
+### GET /api/v1/agents/:name/run/stream (WebSocket)
+
+Same admission checks as `/run`, done **before** the upgrade, so those failures are plain HTTP
+statuses. Parameters travel in the URL: `?query=...&session_id=...` (`query` required, `400` otherwise).
+After the upgrade the runtime's events are proxied as they come; the terminal event is
+`{"type": "done", "invocation_id", "status": "ok", "answer", "usage", "credits_charged_micros", "pricing_status"[, "propuestas"]}`
+or `{"type": "error", "invocation_id", "status", "error_code", "message"}`. Closing the socket cancels the run.
+
+### Subscription-bound publish
+
+`POST /api/v1/agents` and `PUT /api/v1/agents/:name` accept `?subscription_id=<id>` to attach the agent
+to a subscription (the body is YAML, so it travels in the query). A missing subscription or one owned by
+another tenant is `404`; a cancelled one is `422`. A `PUT` that omits it does not detach the agent.
+Runs of that agent are then admitted against the subscription's limits (`402`/`422`/`429` above).
+
+### Invocations, metrics and usage
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/agents/:name/invocations/:id` | `{invocation, models[], children[]}` for one run (trace, per-model usage, child runs). |
+| GET | `/api/v1/agents/:name/status` | Recent invocations (20). |
+| GET | `/api/v1/agents/:name/logs` | Recent invocations (100). |
+| GET | `/api/v1/agents/:name/metrics?period=YYYY-MM` | `{agent, current_month, all_time}`. |
+| GET | `/api/v1/usage?period=YYYY-MM` | `{tenant_id, current_month, all_time, agents[]}`. |
+| GET | `/api/v1/agents/:name/versions`, `/versions/:number` | Immutable version history (each edit appends a version). |
+| GET | `/api/v1/agents/by-id/:id/versions`, `/versions/:number` | Same by agent id (ids are never reused, names are). |
+
+Agents are versioned in the database; `PUT` appends a version and moves the current pointer.
+Create/update bodies are YAML or JSON (the raw body is converted), up to 1 MiB; invalid specs return
+`400 {"error": "invalid agent spec", "problems": [...]}`.
+
+### Other tenant routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/catalog` | Builtin tools and integrations the runtime offers (not tenant-scoped). |
+| PUT / GET / DELETE | `/api/v1/connections/:name`, `/api/v1/connections` | Tenant connections (`base_url` + encrypted `material`); the tenant comes from the credential, not the path. |
+| GET | `/api/v1/subscriptions` | The tenant's active subscription. |
+| POST | `/api/v1/usage/events` | Report business-unit usage. Creating or changing a subscription is operator-only. |
+| POST | `/api/v1/messages/send` | Proactive send: `{channel, recipient, text, conversation_ref}`; `202 {message_id, status}`, `400` missing fields, `502` gateway error. |
+| POST | `/api/v1/runs/messages/send` | Same handler for the runtime, authenticated with a per-run token (not a tenant credential). |
+
+### Operator plane: /api/v1/admin/*
+
+Guarded by `OperatorMiddleware`: an operator JWT (`is_operator`) **or** the static `X-Operator-Token`
+header. Not reachable with a tenant API key. Routes: `POST|GET /tariffs`, `POST|GET /plans`,
+`PUT /tenants/:id/plan`, `POST|GET /subscriptions`, `PUT /subscriptions/:id/plan`,
+`POST /subscriptions/:id/cancel`, `GET /usage`, `GET /tenants`, `GET /tenants/:id`, `GET /agents`,
+`GET /invocations`, `GET /invocations/:id`, `GET /tenants/:id/statement` (and `.csv`),
+`POST /billing-periods/:id/facturado`, `GET /billing-periods/overdue`. Leia does not automate these;
+it only explains a `402/422/429` by pointing the user to their operator.
+
+### Knowledge bundles on the pool
+
+The runtime pool (`deploy/components/runtime-pool/deployment.yaml`) mounts only `runtime.yaml`,
+no knowledge bundle directory (Nexus 0.26.9 and 0.26.10 changelogs say so). An agent that declares
+`spec.knowledge.bundle` starts without it and logs a warning. Bundles work on standalone nodes.
 
 ---
 

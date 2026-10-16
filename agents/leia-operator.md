@@ -34,14 +34,17 @@ curl -s -X POST "${NEXUS_URL}/api/v1/agents" \
   --data-binary @<agent-file>.yaml
 ```
 
-After deploying, poll status every 5 seconds for up to 60 seconds:
+A successful create answers `201`. If the tenant has a subscription, publish with `?subscription_id=<id>`
+(`404` unknown, `422` inactive). Then confirm the agent is registered and, once it has a live version, smoke-test it:
 
 ```bash
-curl -s -X GET "${NEXUS_URL}/api/v1/agents/<name>" \
-  -H "X-API-Key: ${API_KEY}"
+curl -s "${NEXUS_URL}/api/v1/agents/<name>" -H "X-API-Key: ${API_KEY}"
+curl -s "${NEXUS_URL}/api/v1/agents/<name>/status" -H "X-API-Key: ${API_KEY}"   # recent invocations
 ```
 
-Report when the agent reaches `Ready` phase, or timeout with current status.
+Nexus 0.26 stores agents as versions in a database; there is no `Ready` phase to wait for. A run on an
+agent without a live version returns `422` ("agent has no live version (draft)"). Report the created
+version and any `400 problems[]` verbatim.
 
 ### List
 
