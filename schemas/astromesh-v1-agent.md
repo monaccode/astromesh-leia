@@ -763,8 +763,8 @@ when it enters the conversation, so one large response cannot fill the window:
 a list keeps its first elements plus `{"_omitidos": N, …}`, a dict trims its
 largest (possibly nested) list, anything else is cut at the head. The cap is
 `tools[].max_result_tokens` → `orchestration.max_tool_result_tokens` → `8000`.
-It applies to `react`, `plan_and_execute`, `pipeline`, `parallel_fan_out` and
-`supervisor`; **not** to `swarm`, and Glyph programs receive full data.
+It applies to `react`, `plan_and_execute`, `pipeline`, `parallel_fan_out`,
+`supervisor` and `swarm` (0.71.0+), and Glyph programs receive full data.
 
 **Example tools array:**
 ```yaml
@@ -880,9 +880,9 @@ continues without that memory. On a node older than 0.71.0 the blocks are ignore
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `backend` | string | **required** | -- | `chromadb`, `faiss`, `pgvector` or `qdrant`. Anything else (including `in_memory`) is an `AgentConfigError`. |
-| `embeddings` | object | **required** | -- | Embedder, same shape as RAG's: `provider` is `ollama`, `hf` or `sentence_transformer` (the last needs `astromesh[embeddings]`), plus `model`, etc. There is no implicit default. |
+| `embeddings` | object | **required** | -- | Embedder, same shape as RAG's. `provider` is **required** (no default) and is `ollama`, `hf` or `sentence_transformer` (the last needs `astromesh[embeddings]`), plus `model`, etc. There is no implicit default. |
 | `dimension` | integer | required except `chromadb` | -- | Vector size; must match the embedding model. |
-| `connection.url` | string | `pgvector`, `qdrant` | -- | DSN / URL of the store. |
+| `connection.url` | string | **required** for `pgvector`; optional for `qdrant` | -- | DSN of the store (pgvector) / server URL (qdrant). |
 | `path` | string | optional | -- | `chromadb` only: storage directory. |
 | `similarity_threshold` | number | optional | `0.75` | Minimum cosine similarity for retrieval, 0.0-1.0. |
 | `max_results` | integer | optional | `10` | Maximum number of results to return per query. |

@@ -171,7 +171,7 @@ Defaults to emit and why:
    - **Core 0.71.0+ applies four sections that used to be inert** — emit them only when the user needs them and the node is at 0.71.0+:
      - `orchestration.timeout_seconds`: **>= 120** or omit (see above).
      - `permissions.allowed_actions` / `denied_actions`: whitelist/blacklist of **registered tool names** (`<slug>_<action>` for integration/api/mcp, `kb_*` for bundles) with `fnmatch` wildcards; `denied` wins. Only these two keys exist. A name that matches nothing leaves that tool out, so check names against the tools you declared.
-     - `memory.semantic` (`chromadb|faiss|pgvector|qdrant`, **`embeddings` required**, `dimension` required except chromadb, `connection.url` for pgvector/qdrant) and `memory.episodic` (`postgres`, `connection.url`): each needs its extra on the node; a block that cannot be built keeps the agent from loading, so only emit them when the user has the store.
+     - `memory.semantic` (`chromadb|faiss|pgvector|qdrant`, **`embeddings` required**, `dimension` required except chromadb, `connection.url` required for pgvector, optional for qdrant; `embeddings.provider` required) and `memory.episodic` (`postgres`, `connection.url`): each needs its extra on the node; a block that cannot be built keeps the agent from loading, so only emit them when the user has the store.
      - `pattern: swarm` (see step 3).
    - Do **not** emit `observability` or `prompts.templates` (nothing reads them) — unless the user explicitly asks, and then say they are inert.
    - No `{{agent_name}}`, `{{current_date}}`, `{{tools_list}}` in prompts — the runtime does not provide them and they render empty. Write names literally.

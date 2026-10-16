@@ -2,7 +2,7 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
-> **Version:** This reference reflects **astromesh-nexus v0.26.11** (pool on astromesh core 0.70.0), re-derived from the router (`internal/server/server.go`) and handlers. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* for what was added.
+> **Version:** This reference reflects **astromesh-nexus v0.26.11** (pool on astromesh core 0.70.0; `Blocked`/`Guardrail` persistence and the `timeout` status are Nexus 0.26.13+, core 0.71.0), re-derived from the router (`internal/server/server.go`) and handlers. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* for what was added.
 
 ## Base URL
 
@@ -530,7 +530,7 @@ The agent endpoints are **tenant-scoped**: the target namespace is the caller's 
 >
 > **Blocked runs.** Each invocation row (in `/logs` and in the invocation detail,
 > `GET /agents/:name/invocations/:id`) carries `Blocked` (bool) and `Guardrail` (the rule object)
-> **only when a guardrail rejected the run** (`omitempty`; Nexus builds after 0.26.12 persist
+> **only when a guardrail rejected the run** (`omitempty`; Nexus 0.26.13+ persists
 > them). A core 504 `{"error":"timeout"}` (`orchestration.timeout_seconds`) closes the
 > invocation with `Status: "timeout"`.
 
