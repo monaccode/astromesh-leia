@@ -2,7 +2,7 @@
 
 This document is the authoritative schema reference for `astromesh/v1 Agent` manifests. Subagents (architect, operator, doctor) MUST consult this file when generating or validating agent YAML.
 
-**Synced to astromesh core v0.68.0.** Two sources of truth are cited throughout, and they do not always agree:
+**Synced to astromesh core v0.71.0.** Two sources of truth are cited throughout, and they do not always agree:
 
 - **The editor schema** — `vscode-extension/schemas/agent.schema.json` in the core repo. Validators (VS Code, CI linters) use it.
 - **What the runtime loads** — `AgentRuntime._build_agent` in `astromesh/runtime/engine.py`. This is what actually happens on a node.
@@ -282,7 +282,6 @@ The provider's prompt cache only helps if everything before the last message is 
 
 - `prompts.system` uses `knowledge`, `prefetch`, `memory.semantic` or `memory.episodic` inside a Jinja block (`{{ }}` / `{% %}`) — move it to `prompts.context` (`engine.py:1219-1225`);
 - `prompts.system` uses `memory.conversation` — the legacy path still works (history is rendered into the system prompt, no messages are sent) but breaks the cache; drop it, history now travels as messages (`engine.py:920-925`);
-- `prompts.context` is set but the pattern does not separate it — only `swarm` in 0.68; there it is appended to the end of the system prompt with no cache gain (`engine.py:1226-1231`).
 
 Do not iterate `memory.conversation` inside `prompts.context` either: the history already travels as messages.
 
@@ -309,7 +308,8 @@ Controls how the agent processes tasks and uses tools.
 |-------|------|----------|---------|-------------|
 | `pattern` | string | optional | `"react"` | Orchestration pattern. One of: `react`, `plan_and_execute`, `parallel_fan_out`, `pipeline`, `supervisor`, `swarm`, `glyph` (core v0.39.0+). See `schemas/orchestration-patterns.md`. |
 | `max_iterations` | integer | optional | `10` | Maximum reasoning/tool-call loops. In `plan_and_execute`, `pipeline`, `parallel_fan_out` it bounds **each** step/stage/subtask's tool loop, not the whole run. |
-| `timeout_seconds` | integer | optional | -- | Accepted by the editor schema, **not read by the 0.68 runtime** — there is no run-level timeout. Per-call limits come from the model block's `timeout`. (`timeout` here is its deprecated alias, equally unread.) |
+| `timeout_seconds` | number > 0 | optional | -- | **Applied since core 0.71.0.** Cuts the whole run: HTTP **504** `{"error": "timeout", "agent", "timeout_seconds"}` on REST and `POST /v1/workflows/{name}/run`, WebSocket `error` event with `error: "timeout"`; the run leaves a `timeout` episode, an in-flight tool closes as `{ok: false, cancelled: true}`. A value <= 0, a bool or a non-number is an `AgentConfigError`. **Use >= 120 or omit it**: the provider's HTTP timeout is 120 s and values of 30-90 s cut runs with tools or slow models. `timeout` is its deprecated alias. The model block's `timeout` is still the per-call limit. |
+| `max_handoffs` | integer | optional | `3` | **`pattern: swarm` only (core 0.71.0+).** Integer >= 1; caps chained handoffs. The runtime carries the counter to the child agent (every sub-agent inherits it); at the cap handoffs are no longer offered or executed. |
 | `max_tool_result_tokens` | integer | optional | `8000` | **core v0.66.0+.** Default cap, in tokens, on each tool result entering the conversation. Overridden per tool by `tools[].max_result_tokens`. A value that is not an integer > 0 warns at load and uses the default (`engine.py:1235-1246`). See *Tool result budget* below. |
 | `stages` | string array | optional | `[analyze, process, synthesize]` | **core v0.65.0+, `pattern: pipeline` only.** 2 to 6 stage names of 1–40 characters. Each name also becomes the model role `stage:<name>`. Anything else out of range → the agent does not load (`engine.py:1366-1376`). |
 | `narrate` | boolean | optional | `true` | **`pattern: glyph` only.** `false` returns the program's result as JSON and skips the second model call that turns it into prose — use it when the agent feeds another agent, not a person. |
@@ -763,8 +763,8 @@ when it enters the conversation, so one large response cannot fill the window:
 a list keeps its first elements plus `{"_omitidos": N, …}`, a dict trims its
 largest (possibly nested) list, anything else is cut at the head. The cap is
 `tools[].max_result_tokens` → `orchestration.max_tool_result_tokens` → `8000`.
-It applies to `react`, `plan_and_execute`, `pipeline`, `parallel_fan_out` and
-`supervisor`; **not** to `swarm`, and Glyph programs receive full data.
+It applies to `react`, `plan_and_execute`, `pipeline`, `parallel_fan_out`,
+`supervisor` and `swarm` (0.71.0+), and Glyph programs receive full data.
 
 **Example tools array:**
 ```yaml
@@ -865,26 +865,46 @@ to a budget derived from the model's `context_window` (core v0.64.0+; see
 `spec.model`). Before core v0.44.0 no agent had conversational memory with any
 backend — the backend was never constructed.
 
-### spec.memory.semantic / spec.memory.episodic (accepted, inert in 0.68)
+### spec.memory.semantic / spec.memory.episodic (built from the manifest, core 0.71.0+)
 
-The editor schema accepts both, but `_build_agent` constructs the
-`MemoryManager` with **only** a conversational backend (`engine.py:895-902`) —
-no semantic or episodic backend is ever built from the manifest, so
-`memory.semantic` / `memory.episodic` in templates are always empty. Do not
-emit these blocks expecting them to do anything; use `spec.knowledge` for
-retrieval.
+Since core 0.71.0 both blocks are built from the manifest (`build_semantic_memory`,
+`build_episodic_backend` in `astromesh/memory/factory.py`); before, they were accepted and did nothing.
+Each backend needs its extra (`astromesh[chromadb|faiss|qdrant|postgres|embeddings]`). **A declared
+block that cannot be built (missing `embeddings`, unknown backend, missing extra, missing
+`dimension`/`connection.url`) is an `AgentConfigError`: the agent stays in `draft` and does not
+load.** A backend that fails at run time (initialize, search, recall, store) is logged and the run
+continues without that memory. On a node older than 0.71.0 the blocks are ignored silently.
 
-#### spec.memory.semantic (schema reference)
+#### spec.memory.semantic
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `backend` | string | optional | `"chromadb"` | Vector store backend. One of: `chromadb`, `pgvector`, `qdrant`, `in_memory`. |
+| `backend` | string | **required** | -- | `chromadb`, `faiss`, `pgvector` or `qdrant`. Anything else (including `in_memory`) is an `AgentConfigError`. |
+| `embeddings` | object | **required** | -- | Embedder, same shape as RAG's. `provider` is **required** (no default) and is `ollama`, `hf` or `sentence_transformer` (the last needs `astromesh[embeddings]`), plus `model`, etc. There is no implicit default. |
+| `dimension` | integer | required except `chromadb` | -- | Vector size; must match the embedding model. |
+| `connection.url` | string | **required** for `pgvector`; optional for `qdrant` | -- | DSN of the store (pgvector) / server URL (qdrant). |
+| `path` | string | optional | -- | `chromadb` only: storage directory. |
 | `similarity_threshold` | number | optional | `0.75` | Minimum cosine similarity for retrieval, 0.0-1.0. |
 | `max_results` | integer | optional | `10` | Maximum number of results to return per query. |
 
-#### spec.memory.episodic (schema reference)
+In the prompt, `memory.semantic` arrives as a list of `{content, similarity, source}` (no vector).
+Semantic writes no longer depend on having conversational memory. The search is scoped to the
+**same session**: one person's stored answers never reach another person's prompt.
 
-Free-form object (`additionalProperties: true` in the editor schema).
+#### spec.memory.episodic
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `backend` | string | **required** | -- | `postgres` (the only one; needs `astromesh[postgres]`). |
+| `connection.url` | string | **required** | -- | Postgres DSN. |
+
+Each run records one episode (`ok`, `blocked`, `error` or `timeout`, the tools called, tokens and
+the guardrail rule; if the input was blocked, or the run failed before the input guardrails, the
+query is not stored). In the prompt, `memory.episodic` carries the 5 most recent episodes of the
+**same session** (filtered in the backend query).
+
+A sub-agent (a `type: agent` tool or a swarm target) keeps its memory in its own session,
+`<session_id>::<agent name>`, not in the person's.
 
 ---
 
@@ -1016,23 +1036,28 @@ guardrails:
 
 ## spec.permissions (optional)
 
-Accepted by the editor schema; **not enforced** by the 0.68 runtime. Do not present any of it as a security boundary.
+**Enforced since core 0.71.0** (`astromesh/runtime/permisos.py`), and only these two keys exist. Any other key (`filesystem`, `network`, `execution`, ...) is ignored with a WARNING at load. On a node older than 0.71.0 the whole section is stored and does nothing.
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `allowed_actions` | string array | optional | -- | Passed to `ToolRegistry.get_tool_schemas` as a filter, but it only hides tools that declare their own `permissions` list, and **no tool loaded from YAML declares one** (`core/tools.py:350-358`) — so today it filters nothing. It is *not* a list of `respond`/`use_tools`/`delegate`/`escalate` verbs. |
-| `filesystem` | object | optional | `{}` | Filesystem access controls. |
-| `filesystem.read` | string array | optional | `[]` | Glob patterns for allowed read paths. |
-| `filesystem.write` | string array | optional | `[]` | Glob patterns for allowed write paths. |
-| `network` | object | optional | `{}` | Network access controls. |
-| `network.allowed` | string array | optional | `[]` | Allowed outbound hostnames or CIDR ranges. |
-| `execution` | object | optional | `{}` | Execution controls. |
-| `execution.dry_run` | boolean | optional | `false` | Intended to simulate side-effecting tools. |
+| `allowed_actions` | string array | optional | -- | Whitelist of **registered tool names** with `fnmatch` wildcards (`*`, `?`, `[]`). Tool names are what the runtime registered: `<slug>_<action>` for `integration`/`api`/`mcp`, `kb_index`/`kb_read`/`kb_find` for knowledge bundles, the declared `name` for `builtin`/`agent`/`client`. A tool that matches nothing is left out. It is *not* a list of `respond`/`use_tools`/`delegate`/`escalate` verbs. |
+| `denied_actions` | string array | optional | -- | Blacklist with the same names and wildcards. **`denied` wins** over `allowed`. |
 
-`filesystem`, `network` and `execution` have no reader in `astromesh/runtime` or
-`astromesh/core` in 0.68: they are stored, not enforced. Real write safety comes
-from `confirm` (integrations) and `mode: propose` (`api`/`mcp`); network safety
-for `api`/`mcp` comes from the runtime's public-host guard.
+Applied both when offering tools to the model and when executing them. A pattern that matches no
+registered tool, or a result that leaves the agent with no tools, logs a warning/error; a
+`prefetch` that names a tool the agent is not allowed to use is an `AgentConfigError`. A value that
+is not a list of strings is an `AgentConfigError`. Declaring only `denied_actions` allows everything
+else.
+
+```yaml
+permissions:
+  allowed_actions: ["crm_*", "kb_*"]
+  denied_actions: ["crm_delete_*"]
+```
+
+This is a tool-visibility control, not a sandbox. Real write safety still comes from `confirm`
+(integrations) and `mode: propose` (`api`/`mcp`); network safety for `api`/`mcp` comes from the
+runtime's public-host guard.
 
 ---
 
@@ -1175,9 +1200,11 @@ spec:
     qualified: {type: boolean}
 ```
 
-Deliberately absent: `orchestration.timeout_seconds` (not read by the runtime), `permissions` (not enforced in 0.68), `memory.semantic` /
-`episodic` (never built), `prompts.templates` (no pattern reads them), and a
-`spec.channels` block (does not exist — WhatsApp is wired at deploy time).
+Deliberately absent: `memory.semantic` / `episodic` (they need an embedder and a vector store or
+Postgres the example does not have), `permissions` (this agent has no restriction to express),
+`prompts.templates` (no pattern reads them), and a `spec.channels` block (does not exist —
+WhatsApp is wired at deploy time). `orchestration.timeout_seconds` is omitted too: if you set it,
+use >= 120 (core 0.71.0 applies it and answers 504 on expiry).
 
 ---
 

@@ -26,7 +26,7 @@ curl -s -X GET "${NEXUS_URL}/api/v1/agents/<agent-name>/logs" \
   -H "X-API-Key: ${API_KEY}"
 ```
 
-Nexus returns the last 100 invocations of the agent from its database (it is not a container log; there is no `lines` parameter). Display them to the user. If the response is empty, inform the user: "No logs available yet for `<agent-name>`. The agent may not have received any requests."
+Nexus returns the last 100 invocations of the agent from its database (it is not a container log; there is no `lines` parameter). Display them to the user. An invocation blocked by a guardrail comes with `Blocked: true` and a `Guardrail` object (the rule that rejected it; both are absent when nothing was blocked — Nexus 0.26.13+ persists them): mark that row as blocked and show its rule, e.g. `[BLOCKED by <rule>]`. A run that hit `orchestration.timeout_seconds` shows status `timeout`. If the response is empty, inform the user: "No logs available yet for `<agent-name>`. The agent may not have received any requests."
 
 #### Step 2 — Follow Mode
 

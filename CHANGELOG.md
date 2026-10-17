@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-10-17
+
+### Changed
+
+- Schemas y arquitecto al día con core **0.71.0**, que aplica cuatro secciones que antes se
+  aceptaban sin efecto: `orchestration.timeout_seconds` (504; recomendado >= 120),
+  `permissions.allowed_actions`/`denied_actions` (nombres registrados, `fnmatch`),
+  `memory.semantic`/`memory.episodic` (con `embeddings`, `dimension`, extras) y `pattern: swarm`
+  con handoff real y `orchestration.max_handoffs`. El arquitecto deja de prohibirlas y las emite
+  cuando el usuario las necesita.
+- `/leia logs` marca la fila bloqueada por guardrail con su regla (`Blocked`/`Guardrail`, que
+  Nexus persiste en el detalle de invocación y en `/logs`); un 504 de core queda como `timeout`.
+- La memoria semántica y episódica figura como de la sesión, y la de un sub-agente (tool
+  `type: agent`, destino de swarm) en `<session_id>::<agente>`; el destino de un swarm recibe la
+  historia acotada y guarda sólo el pedido.
+
 ## [0.8.0] - 2026-10-16
 
 Sincroniza Leia con el ecosistema actual: Nexus **0.26.11**, core **0.70.0**,
