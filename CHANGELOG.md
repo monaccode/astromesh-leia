@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cuando el usuario las necesita.
 - `/leia logs` marca la fila bloqueada por guardrail con su regla (`Blocked`/`Guardrail`, que
   Nexus persiste en el detalle de invocación y en `/logs`); un 504 de core queda como `timeout`.
+- La memoria semántica y episódica figura como de la sesión, y la de un sub-agente (tool
+  `type: agent`, destino de swarm) en `<session_id>::<agente>`; el destino de un swarm recibe la
+  historia acotada y guarda sólo el pedido.
 
 ## [0.8.0] - 2026-10-16
 

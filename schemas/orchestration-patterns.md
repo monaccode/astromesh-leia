@@ -340,7 +340,7 @@ spec:
 
 - The target agents are the manifest's `type: agent` tools. With none, the agent does not load (`AgentConfigError`, same as `supervisor`).
 - Handing over = calling that tool. If the target answers, **its answer is the final answer** — it does not come back to the agent that delegated (unlike `supervisor`). An error from the target (rate limit, permission, `confirmacion_requerida`...) returns to the model like any tool result.
-- The target receives the conversation history in its `query`.
+- The target receives the conversation history in its `query` (the newest 20 turns, at most 8000 characters). It stores only the request in its own memory, under `<session_id>::<target>`, so the person's history is not duplicated.
 - `orchestration.max_handoffs` (integer >= 1, default 3) caps chained handoffs. The runtime carries the counter to the child agent, so every sub-agent inherits it; a `_handoffs` written by the model or by the caller in the run context does not lower it. At the cap, handoffs are no longer offered or executed.
 - It reads history, receives `prompts.context` as a message and honours the tool-result budget. It no longer adds its own system prompt or interprets a JSON `{"handoff": ...}`.
 - On a node older than 0.71.0 the handoff invokes nobody: use `react` with `type: agent` tools there.

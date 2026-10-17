@@ -888,7 +888,8 @@ continues without that memory. On a node older than 0.71.0 the blocks are ignore
 | `max_results` | integer | optional | `10` | Maximum number of results to return per query. |
 
 In the prompt, `memory.semantic` arrives as a list of `{content, similarity, source}` (no vector).
-Semantic writes no longer depend on having conversational memory.
+Semantic writes no longer depend on having conversational memory. The search is scoped to the
+**same session**: one person's stored answers never reach another person's prompt.
 
 #### spec.memory.episodic
 
@@ -898,8 +899,12 @@ Semantic writes no longer depend on having conversational memory.
 | `connection.url` | string | **required** | -- | Postgres DSN. |
 
 Each run records one episode (`ok`, `blocked`, `error` or `timeout`, the tools called, tokens and
-the guardrail rule; if the input was blocked the query is not stored). In the prompt,
-`memory.episodic` carries only episodes of the **same session** (the 5 most recent).
+the guardrail rule; if the input was blocked, or the run failed before the input guardrails, the
+query is not stored). In the prompt, `memory.episodic` carries the 5 most recent episodes of the
+**same session** (filtered in the backend query).
+
+A sub-agent (a `type: agent` tool or a swarm target) keeps its memory in its own session,
+`<session_id>::<agent name>`, not in the person's.
 
 ---
 
