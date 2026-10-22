@@ -50,6 +50,8 @@ When `$ARGUMENTS` contains natural language (not a known subcommand), follow the
 | config       | config management          |
 | bootstrap    | cluster setup              |
 | teardown     | cluster destroy            |
+| a2a          | `leia-operator` A2A check  |
+| ecosystem    | `leia-architect`, answering from `schemas/ecosystem.md` (no YAML) |
 
 If the intent is ambiguous, ask a short clarifying question before routing.
 

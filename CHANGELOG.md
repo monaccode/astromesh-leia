@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-21
+
+Sincroniza Leia con lo que salió en el ecosistema el 19 y 20 de octubre: astromesh core **0.74.1**,
+Nexus **0.28.2** (servidor A2A), ADK 0.7.1 y las librerías `astromesh-a2a` 0.1.1,
+`astromesh-okf`, `astromesh-rag` y `astromesh-context` 0.1.0.
+
+### Added
+
+- **Tools `type: a2a`** (core 0.74.0) en `schemas/astromesh-v1-agent.md` y en el arquitecto:
+  `card_url` (https salvo `policy.allow_insecure_http`), `auth` por nombre de variable
+  (`api_key_env`/`bearer_env`), `policy` (`timeout` ≤ 600 s, `max_bytes` ≤ 16 MiB,
+  `accept_parts`), `description`, `rate_limit`. También cómo vuelve el resultado (`{answer,
+  status, task_id?, pending?}`, salida remota no confiable, pendientes por sesión) y que en el
+  pool de Nexus `auth` sólo resuelve variables que puso el operador.
+- **`spec.skills`** (core 0.73.0) y **`spec.a2a.publicar`** (Nexus 0.27.0): el arquitecto los
+  ofrece cuando otros agentes deben llamar al que diseña (paso nuevo 5a), con la URL de la card.
+- **`origen`** (core 0.73.0): un turno `agente` nunca confirma una acción con `confirm`.
+- **`schemas/nexus-api.md`: sección A2A** de Nexus 0.27–0.28.2 (card, auth, `SendMessage`
+  bloqueante y en background, stream, `GetTask`, `CancelTask` entre pods, `SubscribeToTask`,
+  `ListTasks`, push apagado en dev/mvp, estados, parte de uso, límites) y el entorno del pool.
+- **`schemas/ecosystem.md`**: versiones vigentes de cada componente y cuándo recomendar cada
+  librería (A2A desde LangGraph/CrewAI/… con `astromesh-a2a`, `astromesh-okf` para revisar un
+  bundle, `astromesh-rag` y `astromesh-context` como librerías, no campos del manifiesto, Herald
+  0.12 con Messenger).
+- **Operator**: chequeo A2A después del deploy (card + una llamada `SendMessage`) e intent `a2a`.
+  **Doctor**: paso 10 (404 de la card, escrituras que un llamador A2A nunca confirma, tools a2a
+  que no cargan). **Tester**: un escenario por A2A para agentes publicados. **Interpreter**:
+  entidad `a2a` e intents `a2a` y `ecosystem`.
+
+### Changed
+
+- Sub-agentes (core 0.73.0): su uso se suma al run raíz, el `cost_limit` del padre lo cuenta y
+  Nexus 0.27.1+ lo factura. Arquitecto, schema, tester y doctor lo explican.
+- El schema de editor lista todos los tipos de tool desde core 0.73/0.74; siguen sin declararse
+  `spec.prefetch` y `orchestration.role_map`.
+- Muse Spark Open (`meta/muse-spark-open`) por OpenRouter con precio desde core 0.72.0.
+- REST `/run` de Nexus 0.27.0: corte del cliente = `cancelled` sin cobro, vencimiento = `504`
+  `timeout`. El tester reconoce que Nexus 0.26.12+ reenvía `blocked`/`guardrail`.
+- `/leia deploy` deja de esperar una fase `Ready` que Nexus 0.26+ no tiene.
+- README: compatibilidad Leia 0.10.x / Nexus 0.26–0.28.x / core 0.29–0.74.x.
+
 ## [0.9.0] - 2026-10-17
 
 ### Changed

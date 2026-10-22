@@ -5,7 +5,7 @@
 **Agent operations in plain English, from inside Claude Code.**
 
 [![Astromesh · Author](https://img.shields.io/badge/astromesh-author-8b5cf6?labelColor=161b22)](https://monaccode.github.io/astromesh/#ecosystem)
-[![Version](https://img.shields.io/badge/version-v0.9.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.9.0)
+[![Version](https://img.shields.io/badge/version-v0.10.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.10.0)
 [![Validate Plugin](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml)
 [![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
 [![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
@@ -68,7 +68,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.9.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.10.0.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -135,7 +135,9 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
-| 0.8.x | 0.26.x | 0.29 – 0.71.x |
+| 0.10.x | 0.26 – 0.28.x ² | 0.29 – 0.74.x |
+| 0.9.x | 0.26.x | 0.29 – 0.71.x |
+| 0.8.x | 0.26.x | 0.29 – 0.70.x |
 | 0.7.x | 0.3.x ¹ | 0.29 – 0.70.x |
 | 0.6.x | 0.3.x ¹ | 0.29 – 0.68.x |
 | 0.5.x | 0.3.x | 0.29 – 0.38.x |
@@ -144,6 +146,8 @@ claude plugins add ./astromesh-leia
 | 0.1.x | 0.1.x | 0.18+ |
 
 ¹ Leia 0.7 and earlier sent API keys as `Authorization: Bearer` (rejected by Nexus 0.26) and described the Nexus 0.3.0 API. Leia 0.8 uses `X-API-Key` and the 0.26.11 API. Eval authoring needs core 0.67+, knowledge bundles 0.68+, guardrails 0.70+, standalone reload astromesh-node 0.1.4+ (core 0.60+).
+
+² A2A publishing (`spec.a2a.publicar`) needs Nexus 0.27+, background tasks / `SubscribeToTask` / `ListTasks` 0.28+, and the run usage part 0.28.2. `spec.skills` needs core 0.73+ and `type: a2a` tools core 0.74+ (Nexus pool 0.28.1+). The rest of Leia works against any 0.26.x.
 
 ## License
 

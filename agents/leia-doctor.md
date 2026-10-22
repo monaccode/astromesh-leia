@@ -128,7 +128,7 @@ core **v0.38.1+**. Older runtimes ignore unknown `spec` keys, so nothing errors:
 the agent answers normally and no link ever runs. Check the runtime version with
 `GET /v1/health` before looking anywhere else — it is the usual cause on any
 node older than v0.38.1 (Nexus accepts `spec.chain` whatever its pool runs; as
-of 2026-10-11 the managed pool runs core 0.68.0, which supports chains).
+of 2026-10-21 the managed pool runs core 0.74.1, which supports chains).
 
 To confirm what a node actually compiled, call `GET /v1/agents/<name>/chain` — it
 returns the expanded graph without executing anything. A `404` means the node
@@ -137,6 +137,35 @@ does support chains, run the agent and read the `chain.links` array in the
 response: a link that did not fire is listed with `status: skipped` and a
 `reason`, which distinguishes "the condition was false" from "something upstream
 stopped".
+
+### 10. A2A (if applicable)
+
+Only when the agent declares `spec.a2a.publicar` or a `type: a2a` tool.
+
+**Published over A2A, callers get 404.** Fetch the card as the operator does
+(`agents/leia-operator.md`, *A2A*). `{"error":"agent not found"}` → the **live**
+version lacks `spec.a2a.publicar: true` (a later version without it unpublished
+the agent) or it is a draft. `{"error":"not found"}` on every agent → the
+deployment has no `NEXUS_PUBLIC_URL` (operator). `VersionNotSupportedError` → the
+caller did not send `A2A-Version: 1.0`. Push methods answering `-32004` are
+expected: push is off in dev and mvp.
+
+**An A2A caller's write never happens.** Not a bug: A2A runs carry
+`origen: "agente"` and a `confirm`-gated action waits for a human "sí" that an
+agent cannot give. Use `mode: propose` or a human channel for that write.
+
+**A `type: a2a` tool does not work.**
+- Agent in `draft` with "instalá astromesh[a2a]" → the node lacks the extra (the
+  Nexus pool has it from Nexus 0.28.1).
+- Agent does not load → read the error: http `card_url` without
+  `policy.allow_insecure_http`, an unknown `policy`/`auth` key, or a duplicate
+  tool name.
+- Agent loads but the model never sees the tool → core < 0.74.0, which skips it
+  with an "unsupported type" warning. Check `GET /v1/health`.
+- The tool answers `{error, status: "failed"}` → the remote is down, rejected the
+  credential, or exceeded `policy.timeout`/`max_bytes`. On Nexus check first that
+  the `auth` env var exists in the pool: tenants cannot add one
+  (`schemas/nexus-api.md`, *Runtime pool environment*).
 
 ## Output Format
 
@@ -177,3 +206,4 @@ When relevant, mention these common issues:
 - **WhatsApp not receiving messages** — Webhook URL not configured in Meta dashboard, or verify token mismatch.
 - **401 on all API calls** — API key rotated or config file pointing to wrong cluster.
 - **Tenant in Error phase** — Resource quota exceeded or RBAC misconfiguration. Check tenant events.
+- **Runs with sub-agents cost more since Nexus 0.27.1** — not an error: core 0.73.0 adds the sub-agents' usage to the root run, and Nexus bills it. The parent's `cost_limit` counts it too, so a supervisor that used to fit may now be cut off.

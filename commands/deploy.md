@@ -44,16 +44,16 @@ If the `--tenant` flag is provided, inject or override `metadata.namespace` in t
 
 Dispatch **leia-operator** to deploy the agent:
 - POST the YAML to the nexus API endpoint
-- Poll status every 5 seconds for up to 60 seconds
-- Report progress as it happens
+- Confirm the agent is registered and has a live version (Nexus 0.26+ has no `Ready` phase)
+- If the manifest declares `spec.a2a.publicar: true`, run the operator's A2A check (card + one smoke call)
 
 #### Step 3 — Report
 
 Show deployment result:
-- Agent name, tenant, current phase
-- If `Ready`: display success message and suggest `/leia test <agent-name>`
-- If timed out waiting: show current status and suggest `/leia status <agent-name>` to keep monitoring
-- If error: show the error details and suggest `/leia logs <agent-name>` or `/leia diagnose`
+- Agent name, tenant, created version
+- If registered with a live version: display success message and suggest `/leia test <agent-name>`
+- If published over A2A: the card URL, the skills it announces, and that callers need the tenant's API key
+- If error: show the error details (`400 problems[]` verbatim) and suggest `/leia logs <agent-name>` or `/leia diagnose`
 
 ### Case 2: No File Specified
 

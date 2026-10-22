@@ -28,12 +28,14 @@ Read `~/.astromesh-leia/config.yaml` for the nexus URL and API key before starti
 | `credits_charged_micros`, `pricing_status` | Nexus billing for the run. |
 | `invocation_id` | Use it with `GET /api/v1/agents/<name>/invocations/<id>` for the stored trace. |
 
-**Guardrail blocks.** The core runtime (`POST /v1/agents/<name>/run` on a node) returns `blocked: true` and `guardrail: {direction, rule, reason}` (direction `input`/`output`; `reason` never repeats the content). **Nexus 0.26.11 does not forward `blocked`/`guardrail`** — through Nexus a block is a normal `200`/`status: ok` whose `answer` is the rejection text (the rule's `message`, or core's default `I can't help with that request.`). So:
+**Guardrail blocks.** The core runtime (`POST /v1/agents/<name>/run` on a node) returns `blocked: true` and `guardrail: {direction, rule, reason}` (direction `input`/`output`; `reason` never repeats the content). Nexus 0.26.12+ forwards both (and 0.26.13+ stores them in the invocation). **Nexus 0.26.11 does not** — there a block is a normal `200`/`status: ok` whose `answer` is the rejection text (the rule's `message`, or core's default `I can't help with that request.`). So:
 
-- If `blocked` is present, use it. Through Nexus, treat an `answer` that matches the agent's configured guardrail `message` (read `spec.guardrails` from `GET /api/v1/agents/<name>`), with near-zero output tokens, as a probable block, and say it is inferred.
+- If `blocked` is present, use it. Through Nexus 0.26.11, treat an `answer` that matches the agent's configured guardrail `message` (read `spec.guardrails` from `GET /api/v1/agents/<name>`), with near-zero output tokens, as a probable block, and say it is inferred.
 - **A block is not a bad answer when it was expected.** Scenarios that probe a guardrail on purpose (PII in input, forbidden topic, oversized input) **pass** when blocked, and **fail** when the agent answers normally. Score relevance/tone/accuracy only on non-blocked replies.
 - **An unexpected block is a finding**, not a quality score: report the rule and direction, and suggest the YAML fix (e.g. `pii_detection` input redacting an ID the agent needs, `cost_limit` ~4000 too low for a multi-tool run, `max_length` truncating).
 - For `mode: propose` agents, a scenario that should lead to a write passes when `propuestas` contains it. The write was **not** executed; do not report it as done.
+- **Sub-agents (core 0.73.0+):** `usage`/`by_model` include what the agent's `type: agent` tools spent; do not read a higher total as a regression of the parent.
+- **A2A-published agents** (`spec.a2a.publicar: true`): add one scenario over A2A (`SendMessage`, see `agents/leia-operator.md`, *A2A*). It passes on `TASK_STATE_COMPLETED` with an in-scope answer. A `confirm`-gated write requested over A2A must **not** run (the turn is `origen: "agente"`): that scenario passes when the agent asks for confirmation and nothing is executed.
 
 ## Mode 1: Interactive Testing
 

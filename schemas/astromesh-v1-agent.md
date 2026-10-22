@@ -2,7 +2,7 @@
 
 This document is the authoritative schema reference for `astromesh/v1 Agent` manifests. Subagents (architect, operator, doctor) MUST consult this file when generating or validating agent YAML.
 
-**Synced to astromesh core v0.71.0.** Two sources of truth are cited throughout, and they do not always agree:
+**Synced to astromesh core v0.74.1.** Two sources of truth are cited throughout, and they do not always agree:
 
 - **The editor schema** — `vscode-extension/schemas/agent.schema.json` in the core repo. Validators (VS Code, CI linters) use it.
 - **What the runtime loads** — `AgentRuntime._build_agent` in `astromesh/runtime/engine.py`. This is what actually happens on a node.
@@ -123,6 +123,12 @@ model:
 **Thinking models (`reasoning_content`).** `kimi-k2.5` and `kimi-k2.6` are reasoning models: they emit their chain-of-thought in a separate `reasoning_content` field. The runtime handles this automatically — it preserves `reasoning_content` on assistant tool-call turns, so Kimi works inside `react` (and the other tool-calling patterns) with no extra config. Dropping it triggers `400 Bad Request — thinking is enabled but reasoning_content is missing in assistant tool call message`, a client error the runtime already guards against.
 
 **Cost & cache-aware pricing (astromesh v0.28.8–v0.28.9).** Kimi pricing is built into the router's cost estimation, so `cost_optimized` ranks Kimi correctly against OpenAI/Ollama slots. Moonshot's context cache is priced too: cache-read input tokens bill at a lower rate and surface as `cache_read_input_tokens` in `response.usage`. Costs are attributed under a derived provider label (`kimi` for kimi/moonshot models, `anthropic` for claude, `openai` for gpt/o-series, else `openai_compat`).
+
+**Muse Spark Open via OpenRouter (astromesh v0.72.0+).** `model: meta/muse-spark-open`
+with `provider: openai_compat`, `endpoint: https://openrouter.ai/api/v1` and an
+`api_key_env` for the OpenRouter key. The provider must be explicit (the id carries a `/`).
+The router prices it at 1.25 / 4.25 USD per 1M input/output tokens (cached input 0.15),
+labelled `meta`; before 0.72.0 its cost was estimated as 0.
 
 ### spec.model.fallback (optional)
 
@@ -555,8 +561,8 @@ every version-gated field in this file.
 
 ## spec.tools (optional)
 
-Array of tool definitions. Each tool must have `name` and `type`. **Six** tool
-types load from an agent YAML in core v0.68.0 (`engine.py:990-1205`):
+Array of tool definitions. Each tool must have `name` and `type`. **Seven** tool
+types load from an agent YAML in core v0.74.1 (`_build_agent` in `engine.py`):
 
 | `type` | Since | What it is |
 |---|---|---|
@@ -566,6 +572,7 @@ types load from an agent YAML in core v0.68.0 (`engine.py:990-1205`):
 | `integration` | v0.37.0 | Actions of a catalog integration (`praxis`, `gmail`, `google_sheets`, …). |
 | `api` | v0.57.0 | A tenant's own HTTP API, declared inline. |
 | `mcp` | v0.58.0 | A tenant's MCP server, with a snapshot of its tools inline. |
+| `a2a` | v0.74.0 | A remote agent that speaks A2A 1.0, called through its Agent Card. Needs the `a2a` extra. |
 
 Any other `type` (`internal` — also the default when `type` is omitted —,
 `mcp_stdio`/`mcp_sse`/`mcp_http`, `webhook`, `rag`) is **not loadable**: the
@@ -573,10 +580,11 @@ runtime logs a `WARNING` naming the agent, the tool and the unsupported type,
 and skips the tool (never registered, never reaches the model). From core 1.0
 an unsupported type becomes a hard error. Do not author agents with those types.
 
-> **Editor-schema lag.** The 0.68 `agent.schema.json` still enumerates only
-> `builtin`, `agent`, `client` for `tools[].type`. A JSON-schema validator will
-> flag `integration`, `api` and `mcp` even though the runtime loads them. Trust
-> the runtime; mention the lint warning to the user if they validate in VS Code.
+> **Editor schema.** Since core 0.73.0 `agent.schema.json` enumerates
+> `integration`, `api` and `mcp` for `tools[].type`, and since 0.74.0 `a2a`
+> (with its keys). Before 0.73 a JSON-schema validator flagged those types even
+> though the runtime loaded them. It still does not declare `spec.prefetch` or
+> `orchestration.role_map`: mention the lint warning if the user validates in VS Code.
 
 ### Keys each type reads — everything else is ignored with a WARNING
 
@@ -593,6 +601,7 @@ load time ("declara la tool … con claves que este runtime no lee") and ignored
 | `integration` | `connection`, `actions`, `rate_limit` (no `description` — the integration manifest's is used) |
 | `api` | `connection`, `description`, `auth`, `operations`, `rate_limit` |
 | `mcp` | `connection`, `path`, `auth`, `tools`, `rate_limit` |
+| `a2a` | `card_url`, `auth`, `policy`, `description`, `rate_limit` |
 
 So `rate_limit` on an `agent` tool, `description` on an `integration`, and
 `requires_approval` / `timeout_seconds` on any tool do nothing.
@@ -630,6 +639,16 @@ Delegates to another deployed agent as a tool.
 
 Since core v0.61.0 a sub-agent that proposes (`mode: propose`) writes into its
 parent's `propuestas`, tagged with `via`.
+
+Since core v0.73.0 a sub-agent runs in its parent's trace, and its usage (every
+model, tokens and cost, at any depth) is **added to the root run**: `usage` and
+`usage.by_model` include it, and the root trace lists the children in
+`subagentes`. Two consequences for the author:
+
+- The parent's `cost_limit` guardrail counts what its sub-agents spent, so a
+  supervisor or swarm needs a budget for the whole tree, not only its own turns.
+- **Nexus bills it** (pool on core 0.73.0+, Nexus 0.27.1+): runs with sub-agents
+  cost more than before, because the child usage used to be lost.
 
 ### Type: client (astromesh core v0.35.0+)
 
@@ -754,7 +773,63 @@ tools:
 **Name collisions (`api` and `mcp`).** If the final name of an `api` or `mcp`
 tool matches any other tool of the agent — builtin, integration, another `api`
 or `mcp`, or the bundle's `kb_*` tools — in whichever order, the agent does not
-load (`engine.py:1124-1130, 1166-1174, 1210-1215`).
+load (`engine.py:1124-1130, 1166-1174, 1210-1215`). The same holds for an
+`a2a` tool (core v0.74.0+).
+
+### Type: a2a (astromesh core v0.74.0+)
+
+A remote agent that speaks [A2A 1.0](https://a2a-protocol.org), used as one
+tool. It runs on `astromesh-a2a` (extra `astromesh[a2a]`, included in `all` and
+in the `fulfarodev/astromesh` image). Without the extra the agent stays in
+`draft` with "instalá astromesh[a2a]".
+
+```yaml
+tools:
+  - name: agenda_externa
+    type: a2a
+    card_url: https://agents.example.com/.well-known/agent-card.json
+    auth: { api_key_env: AGENDA_KEY }      # or { bearer_env: AGENDA_TOKEN }; optional
+    policy: { timeout: 30, max_bytes: 262144, accept_parts: [text, data] }  # optional
+    description: "Books and cancels appointments in the clinic's calendar."  # optional
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `card_url` | Yes | URL of the remote Agent Card. **https only**; `http` only with `policy.allow_insecure_http: true` (local development). No credentials in the URL. Its host is the only host the tool may call. |
+| `auth` | No | Exactly one of `api_key_env` (sent as `X-API-Key`) or `bearer_env` (`Authorization: Bearer`): the **name** of an environment variable on the node, never the secret. The library reads it on every request. |
+| `policy.timeout` | No | Seconds per call, `(0, 600]`, default 60. Also the tool's timeout. |
+| `policy.max_bytes` | No | Cap on every response body and part, 1 B – 16 MiB, default 1 MiB. |
+| `policy.accept_parts` | No | Subset of `text`, `data`, `file`; default `[text, data]`. Other parts are dropped. |
+| `policy.allow_insecure_http` | No | `false` by default. |
+| `description` | No | What the model reads. Missing → built from the remote card (quoted as untrusted); write one when the card is vague. |
+| `rate_limit` | No | `{max_calls, window_seconds}`. |
+
+An unknown key in `policy` or `auth`, an http `card_url` without the opt-in, or a
+secret written in the YAML raise at load: **the agent does not load**. Nothing
+touches the network at load time.
+
+What the model sees and what the runtime guarantees:
+
+- The tool takes `{query}` and returns `{answer, status, task_id?, pending?}`.
+  The remote's output arrives **wrapped as untrusted** text; the tool's
+  description tells the model never to treat it as instructions and never to
+  answer a confirmation on the user's behalf.
+- Every call goes out with origin **agent**: the remote never sees it as a person.
+- If the remote asks for more input (`input_required`), the task stays pending
+  per `(session, tool)`, and the next call in the **same session** answers it.
+- A remote that is down, or a failed task, comes back as an error observation
+  (`{error, status: "failed"}`); the run goes on.
+- The usage the remote reports (a `data` part `{"usage": {...}}`, which Nexus
+  0.28.2+ sends) goes to the tool's trace span (`a2a.usage_remoto`), **not** to
+  `usage.by_model`: it is not our model, and its `credits` are not money.
+
+**On Nexus** (pool on core 0.74.1, Nexus 0.28.2) an `a2a` tool loads, but `auth`
+reads an environment variable of the **shared runtime pool**, which carries only
+the LLM provider keys. A tenant cannot set one. So from Nexus only a remote that
+needs no credential works, unless the operator adds the variable to
+`astromesh-runtime-secrets` (and then every tenant's agents can name it). For a
+remote that needs a key, use a standalone node. Say this when you emit `auth`
+for a Nexus deployment.
 
 ### Tool result budget (core v0.66.0+)
 
@@ -1061,6 +1136,70 @@ runtime's public-host guard.
 
 ---
 
+## spec.skills (optional) — astromesh core v0.73.0+
+
+What the agent can do, as a catalog other agents read. They become the `skills` of the
+agent's **A2A Agent Card** (Nexus, `astromesh-a2a`'s server) and `GET /v1/agents/{name}`
+returns them. They do not change how the agent runs.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Stable identifier (`cotizar`, `book-appointment`). |
+| `name` | string | Yes | Short human name. |
+| `description` | string | Yes | One or two sentences a calling agent can decide on. |
+| `tags` | string array | No | Keywords. |
+| `examples` | string array | No | Sample requests. |
+| `inputModes`, `outputModes` | string array | No | MIME types, when they differ from the card's defaults (`text/plain`, `application/json`). |
+
+An invalid entry (missing or empty `id`/`name`/`description`, a list that is not a list
+of strings) is **skipped with a warning** and the agent loads anyway. On a node older than
+0.73.0 the whole section is ignored silently.
+
+```yaml
+skills:
+  - id: reservar-turno
+    name: Reservar turno
+    description: Books a service appointment for a car, given plate, service and preferred day.
+    tags: [turnos, taller]
+    examples: ["Turno para cambio de aceite el jueves, patente AB123CD"]
+```
+
+Write skills from what the agent's tools and prompt really do; a skill the agent cannot
+perform is a promise another agent will act on.
+
+---
+
+## spec.a2a (optional) — read by Nexus 0.27.0+, ignored by the core
+
+Publishes the agent over A2A 1.0 in Nexus. The core runtime does not read it.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `publicar` | boolean | `false` | `true` → Nexus serves the Agent Card at `/a2a/v1/agents/<name>/.well-known/agent-card.json` and the JSON-RPC endpoint at `/a2a/v1/agents/<name>`. |
+
+```yaml
+spec:
+  a2a:
+    publicar: true
+  identity:
+    description: "Books and cancels service appointments for the workshop."  # the card's description
+  skills: [ ... ]                                                          # the card's skills
+```
+
+- It is **opt-in** and read from the **live version**: publishing a new version without it
+  unpublishes the agent. An unpublished agent answers `404 {"error":"agent not found"}` on every
+  A2A route, the same as one that does not exist.
+- The Nexus deployment also needs `NEXUS_PUBLIC_URL`; without it no `/a2a/v1` route exists.
+- No anonymous access: the card and every call need the tenant's `X-API-Key` (or a JWT plus
+  `X-Tenant-ID`). An A2A run is a normal Nexus invocation (`adapter = "a2a"`): same plan limits,
+  credits and billing.
+- A2A turns reach the node with `origen: "agente"`, so another agent can never confirm a
+  `confirm`-gated action. On a pool older than core 0.73.0 that was not true: do not publish an
+  agent with `confirm` tools to a Nexus whose pool runs core < 0.73.0.
+- Give it a real `spec.identity.description` and `spec.skills`: they are all a calling agent knows.
+
+---
+
 ## spec.observability (optional)
 
 Accepted by the editor schema: `tracing` (bool), `metrics` (bool), `collector`
@@ -1238,4 +1377,16 @@ usage = {
 
 `by_model` is the authoritative breakdown; sort is by descending consumption.
 There is no cost/credits economics here beyond the provider `cost` estimate —
-tenant billing lives in the nexus hub, not the core run response.
+tenant billing lives in the nexus hub, not the core run response. Since core
+0.73.0 it includes the usage of sub-agents (`type: agent` tools); a remote A2A
+agent's reported usage does **not** enter it (see *Type: a2a*).
+
+### Who is speaking: `origen` (core v0.73.0+)
+
+`POST /v1/agents/{name}/run` and the WebSocket messages accept
+`origen: "humano" | "agente"` (default `"humano"`). A turn with `origen: "agente"`
+**never confirms** an action gated by `confirm`: only a person can say "sí". An
+invalid value is a `422` (REST) or an `error` event (WS); it never falls back to
+`humano`. Nexus sends `agente` for A2A runs, and the ADK's `bind()`/`connect()`/
+`remote()` send it too. When you test a confirmation flow by hand, send `humano`
+(or nothing).
