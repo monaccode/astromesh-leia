@@ -2,7 +2,7 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
-> **Version:** This reference reflects **astromesh-nexus v0.26.11** (pool on astromesh core 0.70.0; `Blocked`/`Guardrail` persistence and the `timeout` status are Nexus 0.26.13+, core 0.71.0), re-derived from the router (`internal/server/server.go`) and handlers. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* for what was added.
+> **Version:** This reference reflects **astromesh-nexus v0.28.2** (pool on astromesh core 0.74.1), re-derived from the router (`internal/server/server.go`), handlers and `docs/api-reference.md`. The REST plane is the one of 0.26.11 (`Blocked`/`Guardrail` persistence and the `timeout` status are 0.26.13+) plus the run-close rules of 0.27.0; the **A2A server** is 0.27.0–0.28.2. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* and *A2A (Agent2Agent)* for what was added.
 
 ## Base URL
 
@@ -960,6 +960,9 @@ the rejection text in `answer`. Nexus 0.26.12+ forwards them in the response (ab
 | `503` | Tenant or subscription limits, or the invocation record, could not be resolved; the run is not executed. |
 
 A run that fails in the runtime returns an error body with `invocation_id` and `status` (`error` or `timeout`).
+Since Nexus 0.27.0 a REST run follows the WebSocket rules: a client that disconnects leaves the
+invocation `cancelled` (not charged) instead of `error`, and a run that reaches `--run-timeout` is
+`timeout` with `504`, whatever error the runtime gave.
 
 ### GET /api/v1/agents/:name/run/stream (WebSocket)
 
@@ -1016,8 +1019,78 @@ it only explains a `402/422/429` by pointing the user to their operator.
 ### Knowledge bundles on the pool
 
 The runtime pool (`deploy/components/runtime-pool/deployment.yaml`) mounts only `runtime.yaml`,
-no knowledge bundle directory (Nexus 0.26.9 and 0.26.10 changelogs say so). An agent that declares
+no knowledge bundle directory (still true in Nexus 0.28.2). An agent that declares
 `spec.knowledge.bundle` starts without it and logs a warning. Bundles work on standalone nodes.
+
+### Runtime pool environment
+
+The pool's environment carries only the LLM provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`MOONSHOT_API_KEY`, from the `astromesh-runtime-secrets` Secret) plus internal settings. A tenant
+cannot add variables. So any manifest field that names an env var (`api_key_env` of a model block
+or of an `a2a` tool's `auth`) only resolves to one of those, or to something the operator added
+to that Secret for every tenant.
+
+---
+
+## A2A (Agent2Agent) — Nexus 0.27.0+
+
+A published Nexus agent can be called by other agents over A2A 1.0 (JSON-RPC binding, SSE for
+streaming). Each A2A task is backed by an ordinary invocation: same admission, plan limits,
+credits and billing as `/run`, with `adapter = "a2a"` and `origen: "agente"` toward the runtime
+(another agent's turn never confirms a `confirm`-gated tool).
+
+**Enabling it — both required:**
+
+1. The deployment sets `NEXUS_PUBLIC_URL` (`--public-url`, host only). Empty → no `/a2a/v1` route
+   exists (plain `404 {"error":"not found"}`, warning at boot).
+2. The agent's **live version** declares `spec.a2a.publicar: true`. Without it every A2A route of
+   the agent answers `404 {"error":"agent not found"}`, as if it did not exist. A new version
+   without the flag unpublishes it.
+
+| Method | Path | What |
+|--------|------|------|
+| `GET` | `/a2a/v1/agents/:name/.well-known/agent-card.json` | Agent Card: `name`, `description` (`spec.identity.description`), `version` (live version number), `skills` (`spec.skills`), `capabilities {streaming: true, pushNotifications}`, interface URL `${NEXUS_PUBLIC_URL}/a2a/v1/agents/:name`. |
+| `POST` | `/a2a/v1/agents/:name` | JSON-RPC methods below. |
+
+**Auth:** no anonymous route, the card included. `X-API-Key: nxk_...`, or `Authorization: Bearer
+<JWT>` plus `X-Tenant-ID`. Another tenant's agent is a plain `404`; another tenant's task is
+`TaskNotFoundError` (`-32001`). Every call needs the header `A2A-Version: 1.0`
+(otherwise `VersionNotSupportedError`, `-32009`).
+
+| Method | Since | Behaviour |
+|--------|-------|-----------|
+| `SendMessage` | 0.27.0 | Blocking: the final Task, `COMPLETED` (text artifact, a data part if the run returned `data`, and last the usage part), `FAILED` (public message) or `REJECTED` (no credits, rate, concurrency). With `configuration.returnImmediately: true` (0.28.0) it answers `TASK_STATE_SUBMITTED` once admitted and the run continues in the background; poll with `GetTask`. |
+| `SendStreamingMessage` | 0.27.0 | SSE: Task, `statusUpdate WORKING`, `artifactUpdate`s with the tokens, final `statusUpdate`. `tool_call` frames are not forwarded. |
+| `GetTask` | 0.27.0 | The task with the invocation's state, artifacts and history. |
+| `CancelTask` | 0.27.0 (any replica 0.28.0) | Cuts the run: `cancelled`, not charged, task `CANCELED`. Finished, already `ok`, or not stopped in 10 s → `TaskNotCancelableError` (`-32002`). |
+| `SubscribeToTask` | 0.28.0 | SSE replay from creation, then live until terminal, from any replica. At most 20 open per tenant per replica. |
+| `ListTasks` | 0.28.0 | Tasks of that agent and tenant, newest first, `pageSize` 1–100 (50), filters `contextId`, `status`, `statusTimestampAfter`; artifacts only with `includeArtifacts: true`. |
+| `*TaskPushNotificationConfig` | 0.28.0 | Only when the operator enables push (`NEXUS_A2A_PUSH=true` + secret). **Off in dev and mvp**: the card says `pushNotifications: false` and these answer `UnsupportedOperationError` (`-32004`). |
+
+Continuing a task (a message with `taskId`) is not supported: Nexus never emits `INPUT_REQUIRED`.
+Continue a **conversation** by sending the previous task's `contextId` (it maps to `session_id`,
+same memory) in a new message. `taskId` = `invocation_id`, so
+`GET /api/v1/agents/:name/invocations/<taskId>` shows the stored trace.
+
+**States:** `in_progress` → `WORKING`, `ok` → `COMPLETED`, `error`/`timeout`/`interrupted` →
+`FAILED`, `cancelled` → `CANCELED`, `rejected` → `REJECTED`. For 30 s after an `ok` close another
+replica may still report `WORKING` (0.28.2): poll again.
+
+**Run usage (0.28.2):** a `COMPLETED` task's last artifact part is `{"usage": {input_tokens,
+output_tokens, cached_tokens?, credits, credits_micros, pricing_status, model, models?}}`. They are
+Nexus credits, not money. No usage part on `FAILED`/`CANCELED`/`REJECTED` (nothing charged).
+
+**Limits:** body ≤ 1 MiB (`413`), at least one non-empty text or data part (files are not read),
+`contextId` ≤ 256 bytes, the same `messageId` never starts two invocations.
+
+Quick check from a shell:
+
+```bash
+curl -s "${NEXUS_URL}/a2a/v1/agents/<name>/.well-known/agent-card.json" -H "X-API-Key: ${API_KEY}"
+curl -s -X POST "${NEXUS_URL}/a2a/v1/agents/<name>" \
+  -H "X-API-Key: ${API_KEY}" -H "A2A-Version: 1.0" -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"m-1","role":"ROLE_USER","parts":[{"text":"hola"}]}}}'
+```
 
 ---
 

@@ -25,6 +25,7 @@ Extract as many of these as possible from the input:
 - **tenant** — target tenant/namespace, or null
 - **vertical** — matched template vertical (see Vertical Matching below)
 - **capabilities** — any extra capabilities the user mentioned (e.g. "multilingual", "payment processing")
+- **a2a** — agent-to-agent needs, or null: `publish` when other agents or systems must call this one ("que otro agente le pida turnos", "exponerlo a partners", "A2A"), `call` when this agent must call an external agent (keep the card URL if given), or both
 
 ### Routing
 The command or subagent the request should be forwarded to.
@@ -46,6 +47,8 @@ The command or subagent the request should be forwarded to.
 | "health", "cluster health", "ping" | `health` | leia-operator |
 | "metrics", "stats", "usage" | `metrics` | leia-operator |
 | "tenants", "namespaces", "who" | `tenants` | leia-operator |
+| "publish over A2A", "agent card", "expose to other agents" (existing agent) | `a2a` | leia-operator |
+| "LangGraph/CrewAI/… agent", "which library", "what's new in the ecosystem" | `ecosystem` | leia-architect (answers from `schemas/ecosystem.md`, no YAML) |
 
 ## Vertical Matching
 

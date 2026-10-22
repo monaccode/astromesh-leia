@@ -46,6 +46,37 @@ Nexus 0.26 stores agents as versions in a database; there is no `Ready` phase to
 agent without a live version returns `422` ("agent has no live version (draft)"). Report the created
 version and any `400 problems[]` verbatim.
 
+If the manifest declares `spec.a2a.publicar: true`, run the A2A check below after the deploy.
+
+### A2A (Nexus 0.27.0+)
+
+Verify that an agent is published over A2A and give the user what a caller needs. See
+`schemas/nexus-api.md`, *A2A*.
+
+```bash
+curl -s -w '\n%{http_code}\n' "${NEXUS_URL}/a2a/v1/agents/<name>/.well-known/agent-card.json" \
+  -H "X-API-Key: ${API_KEY}"
+```
+
+- `200`: report the card's interface URL (`supportedInterfaces[0].url`), `version`, the `skills`
+  ids and `capabilities.pushNotifications`. Then one blocking smoke call (it is a billed
+  invocation, say so before running it):
+
+  ```bash
+  curl -s -X POST "${NEXUS_URL}/a2a/v1/agents/<name>" \
+    -H "X-API-Key: ${API_KEY}" -H "A2A-Version: 1.0" -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"leia-smoke-<timestamp>","role":"ROLE_USER","parts":[{"text":"<a short question in scope>"}]}}}'
+  ```
+
+  `TASK_STATE_COMPLETED` passes; report the answer and the usage part's `credits`.
+- `404 {"error":"agent not found"}`: the live version has no `spec.a2a.publicar: true` (or the agent
+  is a draft, or belongs to another tenant). `404 {"error":"not found"}` for every agent: the
+  deployment has no `NEXUS_PUBLIC_URL` — an operator setting, not a manifest fix.
+- `401`: the credential; an anonymous fetch is refused by design.
+
+Tell the user that callers need the tenant's API key, that every A2A call is a billed invocation,
+and that an A2A caller can never confirm a `confirm`-gated write.
+
 ### List
 
 List all agents in the cluster.
