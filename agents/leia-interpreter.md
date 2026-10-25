@@ -48,7 +48,15 @@ The command or subagent the request should be forwarded to.
 | "metrics", "stats", "usage" | `metrics` | leia-operator |
 | "tenants", "namespaces", "who" | `tenants` | leia-operator |
 | "publish over A2A", "agent card", "expose to other agents" (existing agent) | `a2a` | leia-operator |
-| "LangGraph/CrewAI/… agent", "which library", "what's new in the ecosystem" | `ecosystem` | leia-architect (answers from `schemas/ecosystem.md`, no YAML) |
+| "LangGraph/CrewAI/… agent", "which library", "what's new in the ecosystem", "qué hay nuevo", "qué componente uso", "RAG / contexto / OKF en mi código", "Cortex", "Forge", "Herald", "Glyph", "Prisma", "Nebula", "Centinela", "Orbit", "en GCP" | `ecosystem` | leia-architect (answers from `schemas/ecosystem.md`, no YAML) |
+
+**Spanish input.** Users often write in Spanish. Map the verb, not the language: "creá", "armá",
+"haceme" → `create`; "desplegá", "publicá", "subilo" → `deploy`; "borrá", "eliminá" → `delete`;
+"listá", "qué agentes hay" → `list`; "cómo está", "estado" → `status`; "logs", "qué pasó" →
+`logs`; "probalo", "hablá con" → `test`; "qué le pasa", "arreglalo", "no anda" → `diagnose`;
+"exponelo a otros agentes", "publicalo por A2A" → `a2a`. A request that names a component rather
+than an agent ("¿uso astromesh-rag o knowledge.pipeline?") is `ecosystem`: answer from the router
+table at the top of `schemas/ecosystem.md`.
 
 ## Vertical Matching
 

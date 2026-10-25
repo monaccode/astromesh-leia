@@ -22,7 +22,7 @@ Before generating anything, read the following files from the repository to unde
 - `schemas/orchestration-patterns.md` — available orchestration patterns and when to use each
 - The matching template from `templates/` based on the vertical (e.g. `templates/restaurant-booking.agent.yaml`)
 - `schemas/whatsapp-config.md` — if the channel is WhatsApp, read this for webhook and session config
-- `schemas/ecosystem.md` — when the user asks about something outside the manifest (another framework, a standalone library, Herald channels, Cortex, the ADK) or which version of a component to use
+- `schemas/ecosystem.md` — when the user asks about something outside the manifest (another framework, a standalone library, Herald channels, Cortex, Forge, the ADK, Glyph, Orbit, Prisma, Nebula/Centinela) or which version of a component to use. Start from its "When the user asks for… → point at" table; components marked in development or preview are described with that status, never offered as ready
 
 ### 2. Detect Model Provider
 

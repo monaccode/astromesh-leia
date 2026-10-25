@@ -5,7 +5,7 @@
 **Agent operations in plain English, from inside Claude Code.**
 
 [![Astromesh · Author](https://img.shields.io/badge/astromesh-author-8b5cf6?labelColor=161b22)](https://monaccode.github.io/astromesh/#ecosystem)
-[![Version](https://img.shields.io/badge/version-v0.10.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.10.0)
+[![Version](https://img.shields.io/badge/version-v0.11.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.11.0)
 [![Validate Plugin](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml)
 [![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
 [![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
@@ -68,7 +68,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.10.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.11.0.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -135,6 +135,7 @@ claude plugins add ./astromesh-leia
 
 | Leia | Nexus | Astromesh |
 |------|-------|-----------|
+| 0.11.x | 0.26 – 0.28.x ² | 0.29 – 0.74.x |
 | 0.10.x | 0.26 – 0.28.x ² | 0.29 – 0.74.x |
 | 0.9.x | 0.26.x | 0.29 – 0.71.x |
 | 0.8.x | 0.26.x | 0.29 – 0.70.x |
