@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/leia-logo.svg" alt="Leia, a lemon beagle in an astronaut helmet" width="200">
+<img src="assets/leia-logo.png" alt="Leia, a lemon beagle in an astronaut helmet" width="200">
 
 # Astromesh Leia
 
