@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="t">
+  <title id="t">Leia — lemon beagle astronaut</title>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="65%">
+      <stop offset="0" stop-color="#1a1035"/>
+      <stop offset=".7" stop-color="#0a1222"/>
+      <stop offset="1" stop-color="#060d15"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c4b5fd"/>
+      <stop offset=".5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </linearGradient>
+    <linearGradient id="lemon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e3a868"/>
+      <stop offset="1" stop-color="#c98a4b"/>
+    </linearGradient>
+    <radialGradient id="fur" cx="50%" cy="38%" r="60%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#ece5da"/>
+    </radialGradient>
+    <radialGradient id="nose" cx="45%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#a06a58"/>
+      <stop offset="1" stop-color="#6e4034"/>
+    </radialGradient>
+    <linearGradient id="collar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#94a3b8"/>
+    </linearGradient>
+    <radialGradient id="glass" cx="35%" cy="25%" r="80%">
+      <stop offset="0" stop-color="#c4b5fd" stop-opacity=".22"/>
+      <stop offset=".6" stop-color="#8b5cf6" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#00d4ff" stop-opacity=".12"/>
+    </radialGradient>
+    <clipPath id="badge"><circle cx="256" cy="256" r="246"/></clipPath>
+  </defs>
+
+  <!-- badge -->
+  <circle cx="256" cy="256" r="246" fill="url(#bg)"/>
+  <g clip-path="url(#badge)" fill="#e2e8f0">
+    <circle cx="70" cy="140" r="2.2"/><circle cx="110" cy="80" r="1.4"/><circle cx="420" cy="110" r="2"/>
+    <circle cx="455" cy="190" r="1.3"/><circle cx="60" cy="300" r="1.5"/><circle cx="445" cy="330" r="2.2"/>
+    <circle cx="390" cy="60" r="1.2"/><circle cx="150" cy="45" r="1.8"/><circle cx="95" cy="410" r="1.3"/>
+    <circle cx="420" cy="420" r="1.5"/><circle cx="350" cy="35" r="1.6"/>
+    <path d="M430 150 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4z" fill="#c4b5fd"/>
+    <path d="M82 222 l3 7 l7 3 l-7 3 l-3 7 l-3 -7 l-7 -3 l7 -3z" fill="#00d4ff"/>
+  </g>
+
+  <!-- orbit, back half -->
+  <ellipse cx="256" cy="268" rx="232" ry="70" fill="none" stroke="url(#ring)" stroke-width="5" opacity=".45" transform="rotate(-18 256 268)"/>
+
+  <!-- collar -->
+  <path d="M136 392 Q256 360 376 392 L384 444 Q256 470 128 444 Z" fill="url(#collar)"/>
+  <path d="M132 414 Q256 386 380 414 L382 426 Q256 398 130 426 Z" fill="#8b5cf6"/>
+  <circle cx="320" cy="438" r="11" fill="#00d4ff" stroke="#0a1222" stroke-width="3"/>
+
+  <!-- ears -->
+  <path d="M178 196 C140 200 118 250 124 318 C128 360 150 384 170 376 C190 368 196 320 200 270 Z" fill="url(#lemon)"/>
+  <path d="M334 196 C372 200 394 250 388 318 C384 360 362 384 342 376 C322 368 316 320 312 270 Z" fill="url(#lemon)"/>
+
+  <!-- head -->
+  <path d="M256 140 C320 140 352 190 352 250 C352 300 340 350 300 372 C280 382 232 382 212 372 C172 350 160 300 160 250 C160 190 192 140 256 140 Z" fill="url(#fur)"/>
+  <!-- lemon patches, white blaze in the middle -->
+  <path d="M232 148 C200 152 176 174 168 212 C164 238 176 258 198 260 C220 262 232 246 234 224 C236 200 236 172 232 148 Z" fill="url(#lemon)"/>
+  <path d="M280 148 C312 152 336 174 344 212 C348 238 336 258 314 260 C292 262 280 246 278 224 C276 200 276 172 280 148 Z" fill="url(#lemon)"/>
+
+  <!-- sleepy eyes -->
+  <path d="M196 236 Q212 248 230 236" fill="none" stroke="#3b2418" stroke-width="6" stroke-linecap="round"/>
+  <path d="M282 236 Q300 248 316 236" fill="none" stroke="#3b2418" stroke-width="6" stroke-linecap="round"/>
+  <path d="M200 240 Q213 252 226 240 Q213 246 200 240Z" fill="#2a1a12"/>
+  <path d="M286 240 Q299 252 312 240 Q299 246 286 240Z" fill="#2a1a12"/>
+
+  <!-- muzzle -->
+  <path d="M180 318 C180 284 214 270 256 270 C298 270 332 284 332 318 C332 352 300 376 256 376 C212 376 180 352 180 318 Z" fill="#fbf8f3"/>
+  <!-- nose -->
+  <path d="M256 274 C290 274 306 290 304 310 C302 330 284 340 256 342 C228 340 210 330 208 310 C206 290 222 274 256 274 Z" fill="url(#nose)"/>
+  <ellipse cx="236" cy="314" rx="10" ry="7" fill="#3a1f18" transform="rotate(20 236 314)"/>
+  <ellipse cx="276" cy="314" rx="10" ry="7" fill="#3a1f18" transform="rotate(-20 276 314)"/>
+  <path d="M256 322 L256 342" stroke="#3a1f18" stroke-width="3"/>
+  <ellipse cx="244" cy="288" rx="16" ry="6" fill="#fff" opacity=".35"/>
+  <!-- mouth -->
+  <path d="M256 342 Q256 356 240 360 M256 342 Q256 356 272 360" fill="none" stroke="#b9a99a" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- helmet glass -->
+  <circle cx="256" cy="262" r="158" fill="url(#glass)" stroke="url(#ring)" stroke-width="8"/>
+  <path d="M150 190 A120 120 0 0 1 238 120" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".45"/>
+  <path d="M136 232 A124 124 0 0 1 142 210" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity=".35"/>
+
+  <circle cx="474" cy="196" r="9" fill="#00d4ff"/>
+
+  <!-- badge rim -->
+  <circle cx="256" cy="256" r="246" fill="none" stroke="url(#ring)" stroke-width="6"/>
+</svg>

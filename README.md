@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/leia-logo.svg" alt="Leia, a lemon beagle in an astronaut helmet" width="200">
+
 # Astromesh Leia
 
 **Agent operations in plain English, from inside Claude Code.**
@@ -23,6 +25,11 @@
 ---
 
 A Claude Code plugin that provides a natural-language interface for creating, deploying, and managing AI agents on astromesh-nexus clusters. Named after Leia, a lemon beagle, this plugin takes you from business idea to deployed WhatsApp agent in minutes -- no Kubernetes expertise required.
+
+Leia is a real dog: a lemon beagle, the author's. Beagles are scent hounds, bred to follow a trail
+until they find what they were sent for. That is the job here too: you say what you need, in Spanish
+or English, and Leia tracks down the part of the ecosystem that does it — or tells you it is not
+there yet.
 
 ## Architecture
 
