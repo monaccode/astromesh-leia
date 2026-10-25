@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-25
+
+Leia conoce todo el ecosistema publicado al 25 de octubre y entiende los pedidos en castellano.
+Sin cambios de core ni de Nexus (siguen 0.74.1 y 0.28.2).
+
+### Added
+
+- **Tabla «cuando el usuario pide… → apuntá a»** al inicio de `schemas/ecosystem.md`: cada pedido
+  típico (en castellano y en inglés) con el componente que lo resuelve y qué hace Leia.
+- **Glyph 0.1.3, Orbit vs. Prisma y Nebula/Centinela** en `schemas/ecosystem.md`, con su estado:
+  Prisma en desarrollo (no provisiona nada todavía), Centinela en preview, Glyph con su costo
+  medido frente a ReAct.
+- **Pedidos en castellano** en el intérprete: verbos ("creá", "desplegá", "probalo", "no anda"…)
+  mapeados a cada intent, y los nombres de componentes enrutan a `ecosystem`.
+
+### Changed
+
+- Versiones en `schemas/ecosystem.md`: **Cortex 0.29.0** (formulario `type: a2a`, bloque A2A con
+  skills y panel A2A con la Agent Card en Nexus), **Forge 0.29.1** (host entre corchetes sólo
+  IPv6, como el core).
+- `astromesh-context`: el nivel 2 del eval (calidad de respuestas) no se corrió; Leia no debe
+  afirmar que mejora las respuestas.
+- El arquitecto describe con su estado los componentes en desarrollo o preview y nunca los ofrece
+  como listos.
+
 ## [0.10.0] - 2026-10-21
 
 Sincroniza Leia con lo que salió en el ecosistema el 19 y 20 de octubre: astromesh core **0.74.1**,
