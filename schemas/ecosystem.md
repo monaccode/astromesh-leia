@@ -2,7 +2,7 @@
 
 Leia designs `astromesh/v1` manifests and operates them on Nexus. Users also ask about the rest
 of the ecosystem: "can my LangGraph agent call this one?", "should I use the RAG library?",
-"which Nexus do I need?". This file answers those questions. **State as of 2026-10-25.** The
+"which Nexus do I need?". This file answers those questions. **State as of 2026-10-26.** The
 latest released versions are below. Never recommend a capability that is not listed here or in
 the component's own docs (`https://monaccode.github.io/astromesh/`).
 
@@ -52,7 +52,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | **Astromesh Forge** | 0.29.1 | Visual agent editor, served by the node at `/forge`. Creates and edits `type: a2a` tools with validation that mirrors the core (0.29.1: a bracketed `card_url` host must be IPv6, as in the core). | The user prefers a form to YAML. |
 | **Astromesh Cortex** | 0.29.0 | Desktop IDE and console that reaches local, GCP and Nexus runtimes. 0.28: schema at parity with core 0.74.1 — `type: a2a` tool form, an A2A block (`spec.a2a.publicar`, card description, `spec.skills`) and snippets that validate. 0.29: an **A2A panel** on each Nexus agent shows the Agent Card a caller sees, or why there is none (not published, or no A2A on that Nexus). | Authoring by hand, publishing YAML, or checking a card visually. |
 | **Astromesh SDD** | 0.1.0 | Spec-Driven Development skills for any coding agent. | — (not about agents at runtime). |
-| **Astromesh Leia** | 0.11.0 | This plugin. | — |
+| **Astromesh Leia** | 0.11.1 | This plugin. | — |
 
 ## Open-source libraries (standalone, any framework)
 
@@ -91,7 +91,7 @@ Do not design an agent that depends on Centinela without telling the user it is 
 
 | Component | Version | What it is |
 |---|---|---|
-| **astromesh-herald** | 0.12.0 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. |
+| **astromesh-herald** | 0.13.0 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. 0.13.0 adds `GET /admin/stats/conversaciones` (admin token): new conversations per local day, hour and channel in an IANA `tz`, up to 62 days — the numbers behind an owner's dashboard. |
 
 An agent that answers on WhatsApp through Herald is still a plain manifest: the channel is wired in
 Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).

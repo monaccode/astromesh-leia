@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-10-26
+
+### Changed
+
+- `schemas/ecosystem.md`: **Herald 0.13.0**, con `GET /admin/stats/conversaciones` (conversaciones
+  nuevas por día, hora y canal en la zona horaria del tenant, hasta 62 días). Sin cambios de core
+  ni de Nexus.
+
 ## [0.11.0] - 2026-10-25
 
 Leia conoce todo el ecosistema publicado al 25 de octubre y entiende los pedidos en castellano.
