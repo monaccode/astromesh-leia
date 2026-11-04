@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-11-04
+
+### Changed
+
+- `schemas/ecosystem.md`: **Herald 0.14.0**. Un binding que corre un agente también puede mandar
+  cada mensaje con adjuntos a `media_callback_url`, firmado con `media_callback_secret`; el agente
+  sigue respondiendo. Nueva fila en la tabla de pedidos («que las fotos lleguen también a mi
+  sistema»). Sin cambios de core ni de Nexus.
+
 ## [0.11.1] - 2026-10-26
 
 ### Changed
