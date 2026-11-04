@@ -24,6 +24,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | "qué entra en la ventana", "presupuesto de tokens", "contexto" | `astromesh-context` | explain; not a manifest field |
 | "revisá / serví este bundle OKF", "conocimiento para Claude o Cursor" | `astromesh-okf` | `uvx astromesh-okf index <bundle>` |
 | "WhatsApp / Instagram / Messenger / Telegram / web chat / email" | Herald + Nexus (WhatsApp also native on a node) | plain manifest; channel is wired outside `spec` |
+| "que las fotos lleguen también a mi sistema", "copiá los adjuntos a otro servicio" | Herald 0.14 `media_callback_url` on the binding | explain; the agent keeps answering, the copy is configured by the Herald operator |
 | "un programa en vez de muchas tool calls", "Glyph" | `pattern: glyph` with a fixed `spec.program` | architect, with the cost warning |
 | "correlo en mi servidor / en mi máquina" | Node (`astromeshd`) | `/leia deploy --node` |
 | "un appliance / imagen inmutable" | Astromesh OS | explain |
@@ -52,7 +53,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | **Astromesh Forge** | 0.29.1 | Visual agent editor, served by the node at `/forge`. Creates and edits `type: a2a` tools with validation that mirrors the core (0.29.1: a bracketed `card_url` host must be IPv6, as in the core). | The user prefers a form to YAML. |
 | **Astromesh Cortex** | 0.29.0 | Desktop IDE and console that reaches local, GCP and Nexus runtimes. 0.28: schema at parity with core 0.74.1 — `type: a2a` tool form, an A2A block (`spec.a2a.publicar`, card description, `spec.skills`) and snippets that validate. 0.29: an **A2A panel** on each Nexus agent shows the Agent Card a caller sees, or why there is none (not published, or no A2A on that Nexus). | Authoring by hand, publishing YAML, or checking a card visually. |
 | **Astromesh SDD** | 0.1.0 | Spec-Driven Development skills for any coding agent. | — (not about agents at runtime). |
-| **Astromesh Leia** | 0.11.1 | This plugin. | — |
+| **Astromesh Leia** | 0.11.2 | This plugin. | — |
 
 ## Open-source libraries (standalone, any framework)
 
@@ -91,7 +92,7 @@ Do not design an agent that depends on Centinela without telling the user it is 
 
 | Component | Version | What it is |
 |---|---|---|
-| **astromesh-herald** | 0.13.0 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. 0.13.0 adds `GET /admin/stats/conversaciones` (admin token): new conversations per local day, hour and channel in an IANA `tz`, up to 62 days — the numbers behind an owner's dashboard. |
+| **astromesh-herald** | 0.14.0 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. 0.13.0 adds `GET /admin/stats/conversaciones` (admin token): new conversations per local day, hour and channel in an IANA `tz`, up to 62 days — the numbers behind an owner's dashboard. 0.14.0: a binding that runs an agent can also send every inbound message with attachments to `media_callback_url`, signed with `media_callback_secret` (`X-Herald-Signature-256`, same payload as a `callback_url` forward); Nexus still gets the message and the agent still answers. Not a manifest field: it lives in the Herald binding. |
 
 An agent that answers on WhatsApp through Herald is still a plain manifest: the channel is wired in
 Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).
