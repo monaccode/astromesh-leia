@@ -7,7 +7,7 @@
 **Agent operations in plain English, from inside Claude Code.**
 
 [![Astromesh · Author](https://img.shields.io/badge/astromesh-author-8b5cf6?labelColor=161b22)](https://monaccode.github.io/astromesh/#ecosystem)
-[![Version](https://img.shields.io/badge/version-v0.12.0-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.12.0)
+[![Version](https://img.shields.io/badge/version-v0.12.1-8b5cf6?labelColor=161b22)](https://github.com/monaccode/astromesh-leia/releases/tag/v0.12.1)
 [![Validate Plugin](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/validate.yml)
 [![Install Test](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/actions/workflows/install-test.yml)
 [![Release](https://github.com/monaccode/astromesh-leia/actions/workflows/release.yml/badge.svg)](https://github.com/monaccode/astromesh-leia/releases)
@@ -75,7 +75,7 @@ git clone https://github.com/monaccode/astromesh-leia.git
 claude plugins add ./astromesh-leia
 
 # Or install from a release
-curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.12.0.tar.gz | tar xz
+curl -L https://github.com/monaccode/astromesh-leia/releases/latest/download/astromesh-leia-v0.12.1.tar.gz | tar xz
 claude plugins add ./astromesh-leia
 ```
 
@@ -158,7 +158,7 @@ claude plugins add ./astromesh-leia
 
 ² A2A publishing (`spec.a2a.publicar`) needs Nexus 0.27+, background tasks / `SubscribeToTask` / `ListTasks` 0.28+, and the run usage part 0.28.2. `spec.skills` needs core 0.73+ and `type: a2a` tools core 0.74+ (Nexus pool 0.28.1+). The rest of Leia works against any 0.26.x.
 
-³ `headers` on a model block needs core 0.75+, so only a standalone node takes it today: the Nexus pool (0.28.1–0.31.1) runs core 0.74.1. Image generation needs Nexus 0.29.1+.
+³ `headers` on a model block needs core 0.75+: a standalone node, or Nexus 0.31.2+ (its pool runs core 0.75.0; there `${VAR}` reaches only the pool's shared variables). Image generation needs Nexus 0.29.1+.
 
 ## License
 
