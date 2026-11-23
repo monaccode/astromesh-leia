@@ -128,7 +128,7 @@ core **v0.38.1+**. Older runtimes ignore unknown `spec` keys, so nothing errors:
 the agent answers normally and no link ever runs. Check the runtime version with
 `GET /v1/health` before looking anywhere else — it is the usual cause on any
 node older than v0.38.1 (Nexus accepts `spec.chain` whatever its pool runs; as
-of 2026-11-23 the managed pool, on Nexus 0.31.2, runs core 0.75.0, which supports chains).
+of 2026-11-23 the managed pool, on Nexus 0.31.3, runs core 0.75.1, which supports chains).
 
 To confirm what a node actually compiled, call `GET /v1/agents/<name>/chain` — it
 returns the expanded graph without executing anything. A `404` means the node

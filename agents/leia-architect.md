@@ -49,7 +49,7 @@ Use the **real** astromesh pattern names (set `spec.orchestration.pattern`). The
 - **parallel_fan_out** — up to 4 concurrent subtasks, then aggregates. For multi-source lookups/comparisons.
 - **supervisor** — a coordinator that only delegates to its `type: agent` tools; it **requires** at least one or the agent does not load.
 - **swarm** — hands the conversation to another agent whose answer is final (core v0.71.0+). Needs at least one `type: agent` tool or the agent does not load; `orchestration.max_handoffs` (>= 1, default 3) caps the chain. For a greeter → specialist flow it is the right pattern; if the coordinator should get the answers back, use `supervisor`. On a node older than 0.71.0 use `react` with `type: agent` tools.
-- **glyph** — a Glyph program instead of a tool loop (core v0.39.0+). Only with a fixed `spec.program` (model-written programs measured far costlier than `react`), only if the node has the `glyph` extra, and `narrate: false` when the agent feeds another system.
+- **glyph** — a Glyph program instead of a tool loop (core v0.39.0+). Only with a fixed `spec.program` (model-written programs measured far costlier than `react`), only if the runtime has the `glyph` extra (the official image from core 0.75.1 and the Nexus pool from 0.31.3 do; a pip-installed node does not), and `narrate: false` when the agent feeds another system.
 
 Most business agents should use **`react`**; use `plan_and_execute` for multi-step processes like reservations or onboarding. See `schemas/orchestration-patterns.md` for the full decision guide.
 

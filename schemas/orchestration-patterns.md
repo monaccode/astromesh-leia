@@ -387,7 +387,7 @@ The agent's plan is a **program** in the Glyph action language, executed by the 
 - The agent must see the data before deciding what to do next.
 - Conversational agents — the fixed cost is paid every turn.
 - Reasoning models (huge output writing code).
-- The node lacks the `glyph` extra (`astromesh-glyph` is not on PyPI yet). Without it, no-program agents fall back to `react` with a warning; agents **with** `spec.program` do not load.
+- The node lacks the `glyph` extra (`astromesh-glyph` is not on PyPI yet, so `pip install astromesh[glyph]` does not bring it). Without it, no-program agents fall back to `react` with a warning; agents **with** `spec.program` do not load. The official image `fulfarodev/astromesh` ships it from **core 0.75.1**, and so does the **Nexus pool from 0.31.3**; older images, and a node installed with pip, do not.
 
 ### YAML Example
 
