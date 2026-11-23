@@ -28,7 +28,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | "un solo bot para varios locales", "saber el teléfono de quien escribe en mi sistema" | Herald 0.15 forward: `sender_phone` + `contact_shared` in the `callback_url` payload | explain; the consumer routes by phone, Herald does not |
 | "generá una imagen", "imágenes para mis posts", "editá esta foto" | Nexus 0.29 `POST /api/v1/images/generate` | explain (`schemas/nexus-api.md`); billed in credits; a business unit (`unidad`) is recorded only if the caller sends it |
 | "¿cuánto gastó?", "ver las corridas en vivo" | Nexus operator console (0.30+, *En vivo*) for the operator; `/api/v1/usage` for the tenant | explain |
-| "mi gateway pide un header", "mandá un header extra al modelo" | `headers` on an `openai_compat` model block (core 0.75) | architect, **node only** — not on Nexus until its pool runs 0.75 |
+| "mi gateway pide un header", "mandá un header extra al modelo" | `headers` on an `openai_compat` model block (core 0.75) | architect; on a node, or on Nexus 0.31.2+ with literal values (`${VAR}` there only reaches the pool's shared variables) |
 | "un programa en vez de muchas tool calls", "Glyph" | `pattern: glyph` with a fixed `spec.program` | architect, with the cost warning |
 | "correlo en mi servidor / en mi máquina" | Node (`astromeshd`) | `/leia deploy --node` |
 | "un appliance / imagen inmutable" | Astromesh OS | explain |
@@ -43,7 +43,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | Component | Version | What it is | Leia cares because |
 |---|---|---|---|
 | **astromesh** (core) | 0.75.0 (PyPI, `fulfarodev/astromesh`) | The agent runtime that loads `*.agent.yaml`. 0.75.0: `headers` on the `openai_compat` provider (strict `${VAR}`, reserved names, never logged) and alphabetical agent load order. | Every field the architect emits is gated on a core version (`schemas/astromesh-v1-agent.md`). |
-| **astromesh-nexus** | 0.31.1 | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. 0.29: image generation (`POST /api/v1/images/generate`, metered in credits, idempotent per `event_id`). 0.30–0.31: the operator console redesigned around a live tape of runs. Its runtime pool **still runs core 0.74.1**. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
+| **astromesh-nexus** | 0.31.2 | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. 0.29: image generation (`POST /api/v1/images/generate`, metered in credits, idempotent per `event_id`). 0.30–0.31: the operator console redesigned around a live tape of runs. 0.31.2: the runtime pool runs **core 0.75.0**. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
 | **astromesh-node** | 0.1.10 | `astromeshd`, the standalone daemon (`/etc/astromesh`, `systemctl reload`). | `/leia deploy --node`. It is the only place a `knowledge.bundle` or an `a2a` tool with credentials works. |
 | **astromesh-os** | 0.13.8 | Immutable, API-only Linux appliance that runs `astromeshd`. It pins a core release. | A node built from it runs the pinned core: check `GET /v1/health` before trusting a version gate. |
 | **astromesh-cli** | 0.4.1 | Terminal client for a node. | — |
@@ -57,7 +57,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | **Astromesh Forge** | 0.29.1 | Visual agent editor, served by the node at `/forge`. Creates and edits `type: a2a` tools with validation that mirrors the core (0.29.1: a bracketed `card_url` host must be IPv6, as in the core). | The user prefers a form to YAML. |
 | **Astromesh Cortex** | 0.29.0 | Desktop IDE and console that reaches local, GCP and Nexus runtimes. 0.28: schema at parity with core 0.74.1 — `type: a2a` tool form, an A2A block (`spec.a2a.publicar`, card description, `spec.skills`) and snippets that validate. 0.29: an **A2A panel** on each Nexus agent shows the Agent Card a caller sees, or why there is none (not published, or no A2A on that Nexus). | Authoring by hand, publishing YAML, or checking a card visually. |
 | **Astromesh SDD** | 0.1.0 | Spec-Driven Development skills for any coding agent. | — (not about agents at runtime). |
-| **Astromesh Leia** | 0.12.0 | This plugin. | — |
+| **Astromesh Leia** | 0.12.1 | This plugin. | — |
 
 ## Open-source libraries (standalone, any framework)
 
@@ -120,7 +120,7 @@ Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).
 
 | Need | Use | Gate |
 |---|---|---|
-| An extra header to the model (gateway key, tenant id) | `headers` on an `openai_compat` block | core 0.75.0+ — **node only**; the Nexus pool runs 0.74.1 |
+| An extra header to the model (gateway key, tenant id) | `headers` on an `openai_compat` block | core 0.75.0+ — a node, or Nexus 0.31.2+ (literal values; `${VAR}` only for pool-wide variables) |
 | The same agent order on every node | Automatic | core 0.75.0+ |
 | Generate or edit an image, billed in credits | `POST /api/v1/images/generate` | Nexus 0.29.0+ (works from 0.29.1) |
 | The sender's phone in a forward | `sender_phone`, `contact_shared` | Herald 0.15.0+ |

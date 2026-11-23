@@ -2,7 +2,7 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
-> **Version:** This reference reflects **astromesh-nexus v0.31.1** (pool still on astromesh core 0.74.1), re-derived from the router (`internal/server/server.go`), handlers and `docs/api-reference.md`. The REST plane is the one of 0.26.11 (`Blocked`/`Guardrail` persistence and the `timeout` status are 0.26.13+) plus the run-close rules of 0.27.0; the **A2A server** is 0.27.0–0.28.2; **image generation** is 0.29.0–0.29.1; 0.30–0.31 only redesign the operator console (no API change). The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* and *A2A (Agent2Agent)* for what was added.
+> **Version:** This reference reflects **astromesh-nexus v0.31.2** (pool on astromesh core 0.75.0), re-derived from the router (`internal/server/server.go`), handlers and `docs/api-reference.md`. The REST plane is the one of 0.26.11 (`Blocked`/`Guardrail` persistence and the `timeout` status are 0.26.13+) plus the run-close rules of 0.27.0; the **A2A server** is 0.27.0–0.28.2; **image generation** is 0.29.0–0.29.1; 0.30–0.31.1 only redesign the operator console (no API change); 0.31.2 moves the pool to core 0.75.0. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* and *A2A (Agent2Agent)* for what was added.
 
 ## Base URL
 
@@ -1065,15 +1065,16 @@ operator there; a tenant sees its own numbers through `/api/v1/usage`.
 ### Knowledge bundles on the pool
 
 The runtime pool (`deploy/components/runtime-pool/deployment.yaml`) mounts only `runtime.yaml`,
-no knowledge bundle directory (still true in Nexus 0.31.1). An agent that declares
+no knowledge bundle directory (still true in Nexus 0.31.2). An agent that declares
 `spec.knowledge.bundle` starts without it and logs a warning. Bundles work on standalone nodes.
 
 ### Runtime pool environment
 
 The pool's environment carries only the LLM provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 `MOONSHOT_API_KEY`, from the `astromesh-runtime-secrets` Secret) plus internal settings. A tenant
-cannot add variables. The pool runs **core 0.74.1** in Nexus 0.28.1–0.31.1: fields that need core
-0.75 (`headers` on a model block) are ignored there. So any manifest field that names an env var (`api_key_env` of a model block
+cannot add variables. The pool runs **core 0.75.0** from Nexus 0.31.2 (core 0.74.1 in
+0.28.1–0.31.1, where `headers` on a model block is ignored). A `${VAR}` in `headers` follows the
+same rule as below, and an unset one drops that model candidate. So any manifest field that names an env var (`api_key_env` of a model block
 or of an `a2a` tool's `auth`) only resolves to one of those, or to something the operator added
 to that Secret for every tenant.
 
