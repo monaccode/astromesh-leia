@@ -42,8 +42,8 @@ section, and say plainly when the answer is "not Leia's job, use X".
 
 | Component | Version | What it is | Leia cares because |
 |---|---|---|---|
-| **astromesh** (core) | 0.75.0 (PyPI, `fulfarodev/astromesh`) | The agent runtime that loads `*.agent.yaml`. 0.75.0: `headers` on the `openai_compat` provider (strict `${VAR}`, reserved names, never logged) and alphabetical agent load order. | Every field the architect emits is gated on a core version (`schemas/astromesh-v1-agent.md`). |
-| **astromesh-nexus** | 0.31.2 | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. 0.29: image generation (`POST /api/v1/images/generate`, metered in credits, idempotent per `event_id`). 0.30–0.31: the operator console redesigned around a live tape of runs. 0.31.2: the runtime pool runs **core 0.75.0**. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
+| **astromesh** (core) | 0.75.1 (PyPI, `fulfarodev/astromesh`) | The agent runtime that loads `*.agent.yaml`. 0.75.0: `headers` on the `openai_compat` provider (strict `${VAR}`, reserved names, never logged) and alphabetical agent load order. 0.75.1: the image ships `astromesh-glyph`, so `spec.program` agents load in Docker and on Nexus. | Every field the architect emits is gated on a core version (`schemas/astromesh-v1-agent.md`). |
+| **astromesh-nexus** | 0.31.3 | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. 0.29: image generation (`POST /api/v1/images/generate`, metered in credits, idempotent per `event_id`). 0.30–0.31: the operator console redesigned around a live tape of runs. 0.31.2: the runtime pool runs **core 0.75.0**; 0.31.3: core **0.75.1**, with Glyph in the image. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
 | **astromesh-node** | 0.1.10 | `astromeshd`, the standalone daemon (`/etc/astromesh`, `systemctl reload`). | `/leia deploy --node`. It is the only place a `knowledge.bundle` or an `a2a` tool with credentials works. |
 | **astromesh-os** | 0.13.8 | Immutable, API-only Linux appliance that runs `astromeshd`. It pins a core release. | A node built from it runs the pinned core: check `GET /v1/health` before trusting a version gate. |
 | **astromesh-cli** | 0.4.1 | Terminal client for a node. | — |
@@ -57,7 +57,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | **Astromesh Forge** | 0.29.1 | Visual agent editor, served by the node at `/forge`. Creates and edits `type: a2a` tools with validation that mirrors the core (0.29.1: a bracketed `card_url` host must be IPv6, as in the core). | The user prefers a form to YAML. |
 | **Astromesh Cortex** | 0.29.0 | Desktop IDE and console that reaches local, GCP and Nexus runtimes. 0.28: schema at parity with core 0.74.1 — `type: a2a` tool form, an A2A block (`spec.a2a.publicar`, card description, `spec.skills`) and snippets that validate. 0.29: an **A2A panel** on each Nexus agent shows the Agent Card a caller sees, or why there is none (not published, or no A2A on that Nexus). | Authoring by hand, publishing YAML, or checking a card visually. |
 | **Astromesh SDD** | 0.1.0 | Spec-Driven Development skills for any coding agent. | — (not about agents at runtime). |
-| **Astromesh Leia** | 0.12.1 | This plugin. | — |
+| **Astromesh Leia** | 0.12.2 | This plugin. | — |
 
 ## Open-source libraries (standalone, any framework)
 
@@ -71,7 +71,7 @@ those are separate libraries, not manifest fields.
 | **astromesh-okf** | 0.1.0 (PyPI) | Reader for Open Knowledge Format bundles: `index`, `read`, `find`, and an MCP server (`astromesh-okf mcp <bundle>`). Read-only and confined to the bundle root. | Checking a bundle the architect wrote (`uvx astromesh-okf index <bundle>`), or serving a bundle to Claude/Cursor over MCP without Astromesh. Format: `schemas/okf-bundle.md`. |
 | **astromesh-rag** | 0.1.0 (PyPI) | RAG patterns (`naive`, `hybrid`, `multi_query`, `hyde`) from the same parts, with a trace per stage. | The user builds retrieval in their own Python code. On a node, retrieval is still a `RAGPipeline` (`schemas/astromesh-v1-rag.md`) and `knowledge.pipeline`. |
 | **astromesh-context** | 0.1.0 (PyPI) | Context engine: one token budget for RAG hits, OKF concepts, memory and history, with an included/excluded trace per item. Includes a published eval: level 1 (retrieval, no model calls) is run and published; **level 2 (answer quality, judged by a model) has not been run** — never claim it improves answers. CLI `astromesh-context explain`, and `astromesh-context mcp`. | The user asks how to decide what goes into the window in their own stack. It is not a manifest field. |
-| **Glyph** | 0.1.3 | Action language: the model writes one program instead of one tool call per turn. Consumed by the core as `pattern: glyph` (extra `glyph`). Measured **+164% to +2839%** the cost of ReAct when the model writes the program each run. | Only a fixed `spec.program` (see `schemas/astromesh-v1-agent.md`). Never pitch it as a saving. |
+| **Glyph** | 0.1.3 | Action language: the model writes one program instead of one tool call per turn. Consumed by the core as `pattern: glyph` (extra `glyph`; in the official image from core 0.75.1 and on the Nexus pool from 0.31.3). Measured **+164% to +2839%** the cost of ReAct when the model writes the program each run. | Only a fixed `spec.program` (see `schemas/astromesh-v1-agent.md`). Never pitch it as a saving. |
 
 ## Deploy targets that are not Nexus
 
@@ -125,6 +125,7 @@ Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).
 | Generate or edit an image, billed in credits | `POST /api/v1/images/generate` | Nexus 0.29.0+ (works from 0.29.1) |
 | The sender's phone in a forward | `sender_phone`, `contact_shared` | Herald 0.15.0+ |
 | See runs, charge and cost as they happen | Operator console, *En vivo* | Nexus 0.30.0+ |
+| A `pattern: glyph` agent with `spec.program` on Nexus or in Docker | Glyph in the image | core 0.75.1 image, Nexus 0.31.3+ |
 
 Not available yet: agent identity across organizations (PAP/Poppy) is in development in a
 separate product and is not part of Nexus or the core. Do not promise it.
