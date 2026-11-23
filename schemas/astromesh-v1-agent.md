@@ -71,7 +71,7 @@ A **model block** — the same shape is used by `primary`, `fallback`, each `ext
 | `api_key` | string | optional | -- | API key as a literal string. Avoid committing secrets; prefer `api_key_env`. |
 | `api_key_env` | string | optional | -- | Environment variable name containing the API key. |
 | `contract`, `invalid_policy`, `max_retries` | object / string / integer | optional | -- | Label contract, what to do with a response that violates it, and retries — `centinela` source only. |
-| `headers` | map string → string | optional | -- | **core v0.75.0+, `openai_compat` only.** Extra HTTP headers sent on every request to the model (a gateway key, a tenant id). Values accept `${VAR}` from the node's environment, **strictly**: an unset variable — even inside `"Bearer ${TOKEN}"` — fails the provider build and the engine drops that candidate (with a fallback, the agent silently runs on the fallback). `Authorization`, `Content-Type`, `Content-Length` and `Host` are reserved in any capitalization, and two names that differ only in case are rejected. A block's `headers` **replaces** the `providers.yaml` entry's `headers` whole, with no merge. Values are credentials: they never reach logs, traces or error messages. **Not on Nexus yet:** the managed pool runs core 0.74.1, which ignores the key (see *Runtime pool environment* in `schemas/nexus-api.md`). |
+| `headers` | map string → string | optional | -- | **core v0.75.0+, `openai_compat` only.** Extra HTTP headers sent on every request to the model (a gateway key, a tenant id). Values accept `${VAR}` from the node's environment, **strictly**: an unset variable — even inside `"Bearer ${TOKEN}"` — fails the provider build and the engine drops that candidate (with a fallback, the agent silently runs on the fallback). `Authorization`, `Content-Type`, `Content-Length` and `Host` are reserved in any capitalization, and two names that differ only in case are rejected. A block's `headers` **replaces** the `providers.yaml` entry's `headers` whole, with no merge. Values are credentials: they never reach logs, traces or error messages. **On Nexus from 0.31.2** (pool on core 0.75.0), with one limit: `${VAR}` resolves only against the pool's environment, which has no tenant variables — a literal value (a tenant id) works, a per-tenant secret does not (see *Runtime pool environment* in `schemas/nexus-api.md`). Nexus 0.31.1 and older run core 0.74.1, which ignores the key. |
 | `timeout` | number | optional | `120` | HTTP client timeout in seconds. Raise it for reasoning models with a slow time-to-first-token. |
 | `temperature`, `max_tokens` | number / integer | optional | -- | Top-level shorthand for `parameters.temperature` / `parameters.max_tokens`. |
 | `context_window` | integer | optional | detected | **core v0.64.0+.** Input tokens the model accepts; sizes the conversational-history budget (90% of the window minus system prompt, tool schemas, `prompts.context` and response `max_tokens`). Without it: Ollama's `parameters.num_ctx`, then litellm's model table, else unknown — and with an unknown window history is trimmed only by `max_turns`, with a load-time warning (`engine.py:907-914`). With several candidates the smallest window wins. `parameters.num_ctx` is read but is not in the editor schema's `parameters` list, so prefer `context_window`. Consumed by the runtime for **every** source, not passed to the provider (`engine.py:310-312`). |
@@ -148,8 +148,12 @@ model:
       X-Tenant-Id: acme
 ```
 
-On a standalone node (`/leia deploy --node`) this works from core 0.75.0. On Nexus it does not yet:
-tell the user, and do not deploy an agent there whose only candidate depends on the header.
+On a standalone node (`/leia deploy --node`) this works from core 0.75.0, `${VAR}` included. On
+Nexus it works from **0.31.2** (pool on core 0.75.0), but a `${VAR}` there can only name a variable
+of the shared pool: literal, non-secret values (`X-Tenant-Id: acme`) are fine; a per-tenant gateway
+key is not, unless the operator adds it to `astromesh-runtime-secrets` for every tenant. On an
+unset variable the candidate is dropped, so on Nexus never make the header-dependent model the only
+candidate. Check the pool with the operator if the Nexus is older than 0.31.2.
 
 **Load order (core v0.75.0+).** A node loads `config/agents/*.agent.yaml` in alphabetical order, so
 `GET /v1/agents` lists them the same way on every machine. Earlier cores followed the file system's
@@ -848,7 +852,7 @@ What the model sees and what the runtime guarantees:
   0.28.2+ sends) goes to the tool's trace span (`a2a.usage_remoto`), **not** to
   `usage.by_model`: it is not our model, and its `credits` are not money.
 
-**On Nexus** (pool on core 0.74.1, Nexus 0.28.2) an `a2a` tool loads, but `auth`
+**On Nexus** (pool on core 0.74.1+ from Nexus 0.28.1; core 0.75.0 from 0.31.2) an `a2a` tool loads, but `auth`
 reads an environment variable of the **shared runtime pool**, which carries only
 the LLM provider keys. A tenant cannot set one. So from Nexus only a remote that
 needs no credential works, unless the operator adds the variable to
