@@ -2,7 +2,7 @@
 
 This document is the authoritative schema reference for `astromesh/v1 Agent` manifests. Subagents (architect, operator, doctor) MUST consult this file when generating or validating agent YAML.
 
-**Synced to astromesh core v0.74.1.** Two sources of truth are cited throughout, and they do not always agree:
+**Synced to astromesh core v0.75.0.** Two sources of truth are cited throughout, and they do not always agree:
 
 - **The editor schema** — `vscode-extension/schemas/agent.schema.json` in the core repo. Validators (VS Code, CI linters) use it.
 - **What the runtime loads** — `AgentRuntime._build_agent` in `astromesh/runtime/engine.py`. This is what actually happens on a node.
@@ -71,6 +71,7 @@ A **model block** — the same shape is used by `primary`, `fallback`, each `ext
 | `api_key` | string | optional | -- | API key as a literal string. Avoid committing secrets; prefer `api_key_env`. |
 | `api_key_env` | string | optional | -- | Environment variable name containing the API key. |
 | `contract`, `invalid_policy`, `max_retries` | object / string / integer | optional | -- | Label contract, what to do with a response that violates it, and retries — `centinela` source only. |
+| `headers` | map string → string | optional | -- | **core v0.75.0+, `openai_compat` only.** Extra HTTP headers sent on every request to the model (a gateway key, a tenant id). Values accept `${VAR}` from the node's environment, **strictly**: an unset variable — even inside `"Bearer ${TOKEN}"` — fails the provider build and the engine drops that candidate (with a fallback, the agent silently runs on the fallback). `Authorization`, `Content-Type`, `Content-Length` and `Host` are reserved in any capitalization, and two names that differ only in case are rejected. A block's `headers` **replaces** the `providers.yaml` entry's `headers` whole, with no merge. Values are credentials: they never reach logs, traces or error messages. **Not on Nexus yet:** the managed pool runs core 0.74.1, which ignores the key (see *Runtime pool environment* in `schemas/nexus-api.md`). |
 | `timeout` | number | optional | `120` | HTTP client timeout in seconds. Raise it for reasoning models with a slow time-to-first-token. |
 | `temperature`, `max_tokens` | number / integer | optional | -- | Top-level shorthand for `parameters.temperature` / `parameters.max_tokens`. |
 | `context_window` | integer | optional | detected | **core v0.64.0+.** Input tokens the model accepts; sizes the conversational-history budget (90% of the window minus system prompt, tool schemas, `prompts.context` and response `max_tokens`). Without it: Ollama's `parameters.num_ctx`, then litellm's model table, else unknown — and with an unknown window history is trimmed only by `max_turns`, with a load-time warning (`engine.py:907-914`). With several candidates the smallest window wins. `parameters.num_ctx` is read but is not in the editor schema's `parameters` list, so prefer `context_window`. Consumed by the runtime for **every** source, not passed to the provider (`engine.py:310-312`). |
@@ -96,6 +97,7 @@ A **model block** — the same shape is used by `primary`, `fallback`, each `ext
 - For `openai_compat` and `azure_openai`, `endpoint` is effectively required (no default).
 - `api_key` and `api_key_env` are mutually exclusive; specifying both is an error.
 - `timeout` must be a positive number.
+- `headers` (core 0.75.0+): only on `openai_compat`; never `Authorization`, `Content-Type`, `Content-Length` or `Host`; no two names equal ignoring case; every `${VAR}` must be set on the node. Never write a literal secret in a header value — use `${VAR}`.
 - `temperature` must be between 0.0 and 2.0 inclusive.
 - `top_p` must be between 0.0 and 1.0 inclusive.
 - `max_tokens` must be a positive integer.
@@ -129,6 +131,29 @@ with `provider: openai_compat`, `endpoint: https://openrouter.ai/api/v1` and an
 `api_key_env` for the OpenRouter key. The provider must be explicit (the id carries a `/`).
 The router prices it at 1.25 / 4.25 USD per 1M input/output tokens (cached input 0.15),
 labelled `meta`; before 0.72.0 its cost was estimated as 0.
+
+**A gateway that wants an extra header (core v0.75.0+).** Some deployments sit behind a gateway that
+needs a key or a tenant id besides `Authorization`. Put it in `headers` with `${VAR}`, and the
+variable in the node's environment:
+
+```yaml
+model:
+  primary:
+    source: openai_compat
+    model: gpt-4o-mini
+    endpoint: https://llm-gateway.example.com/v1
+    api_key_env: GATEWAY_API_KEY
+    headers:
+      X-Gateway-Key: "${GATEWAY_KEY}"
+      X-Tenant-Id: acme
+```
+
+On a standalone node (`/leia deploy --node`) this works from core 0.75.0. On Nexus it does not yet:
+tell the user, and do not deploy an agent there whose only candidate depends on the header.
+
+**Load order (core v0.75.0+).** A node loads `config/agents/*.agent.yaml` in alphabetical order, so
+`GET /v1/agents` lists them the same way on every machine. Earlier cores followed the file system's
+order; never rely on "the first agent" being a particular one.
 
 ### spec.model.fallback (optional)
 

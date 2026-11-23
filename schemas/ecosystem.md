@@ -2,7 +2,7 @@
 
 Leia designs `astromesh/v1` manifests and operates them on Nexus. Users also ask about the rest
 of the ecosystem: "can my LangGraph agent call this one?", "should I use the RAG library?",
-"which Nexus do I need?". This file answers those questions. **State as of 2026-10-26.** The
+"which Nexus do I need?". This file answers those questions. **State as of 2026-11-23.** The
 latest released versions are below. Never recommend a capability that is not listed here or in
 the component's own docs (`https://monaccode.github.io/astromesh/`).
 
@@ -25,6 +25,10 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | "revisá / serví este bundle OKF", "conocimiento para Claude o Cursor" | `astromesh-okf` | `uvx astromesh-okf index <bundle>` |
 | "WhatsApp / Instagram / Messenger / Telegram / web chat / email" | Herald + Nexus (WhatsApp also native on a node) | plain manifest; channel is wired outside `spec` |
 | "que las fotos lleguen también a mi sistema", "copiá los adjuntos a otro servicio" | Herald 0.14 `media_callback_url` on the binding | explain; the agent keeps answering, the copy is configured by the Herald operator |
+| "un solo bot para varios locales", "saber el teléfono de quien escribe en mi sistema" | Herald 0.15 forward: `sender_phone` + `contact_shared` in the `callback_url` payload | explain; the consumer routes by phone, Herald does not |
+| "generá una imagen", "imágenes para mis posts", "editá esta foto" | Nexus 0.29 `POST /api/v1/images/generate` | explain (`schemas/nexus-api.md`); billed in credits; a business unit (`unidad`) is recorded only if the caller sends it |
+| "¿cuánto gastó?", "ver las corridas en vivo" | Nexus operator console (0.30+, *En vivo*) for the operator; `/api/v1/usage` for the tenant | explain |
+| "mi gateway pide un header", "mandá un header extra al modelo" | `headers` on an `openai_compat` model block (core 0.75) | architect, **node only** — not on Nexus until its pool runs 0.75 |
 | "un programa en vez de muchas tool calls", "Glyph" | `pattern: glyph` with a fixed `spec.program` | architect, with the cost warning |
 | "correlo en mi servidor / en mi máquina" | Node (`astromeshd`) | `/leia deploy --node` |
 | "un appliance / imagen inmutable" | Astromesh OS | explain |
@@ -38,8 +42,8 @@ section, and say plainly when the answer is "not Leia's job, use X".
 
 | Component | Version | What it is | Leia cares because |
 |---|---|---|---|
-| **astromesh** (core) | 0.74.1 (PyPI, `fulfarodev/astromesh`) | The agent runtime that loads `*.agent.yaml`. | Every field the architect emits is gated on a core version (`schemas/astromesh-v1-agent.md`). |
-| **astromesh-nexus** | 0.28.2 (dev and mvp) | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. Its runtime pool runs core 0.74.1. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
+| **astromesh** (core) | 0.75.0 (PyPI, `fulfarodev/astromesh`) | The agent runtime that loads `*.agent.yaml`. 0.75.0: `headers` on the `openai_compat` provider (strict `${VAR}`, reserved names, never logged) and alphabetical agent load order. | Every field the architect emits is gated on a core version (`schemas/astromesh-v1-agent.md`). |
+| **astromesh-nexus** | 0.31.1 | The multi-tenant hub: agents as versions, invocations, credits, the `/admin` plane, and an **A2A 1.0 server** per published agent. 0.29: image generation (`POST /api/v1/images/generate`, metered in credits, idempotent per `event_id`). 0.30–0.31: the operator console redesigned around a live tape of runs. Its runtime pool **still runs core 0.74.1**. | It is where `/leia deploy` publishes (`schemas/nexus-api.md`). |
 | **astromesh-node** | 0.1.10 | `astromeshd`, the standalone daemon (`/etc/astromesh`, `systemctl reload`). | `/leia deploy --node`. It is the only place a `knowledge.bundle` or an `a2a` tool with credentials works. |
 | **astromesh-os** | 0.13.8 | Immutable, API-only Linux appliance that runs `astromeshd`. It pins a core release. | A node built from it runs the pinned core: check `GET /v1/health` before trusting a version gate. |
 | **astromesh-cli** | 0.4.1 | Terminal client for a node. | — |
@@ -53,7 +57,7 @@ section, and say plainly when the answer is "not Leia's job, use X".
 | **Astromesh Forge** | 0.29.1 | Visual agent editor, served by the node at `/forge`. Creates and edits `type: a2a` tools with validation that mirrors the core (0.29.1: a bracketed `card_url` host must be IPv6, as in the core). | The user prefers a form to YAML. |
 | **Astromesh Cortex** | 0.29.0 | Desktop IDE and console that reaches local, GCP and Nexus runtimes. 0.28: schema at parity with core 0.74.1 — `type: a2a` tool form, an A2A block (`spec.a2a.publicar`, card description, `spec.skills`) and snippets that validate. 0.29: an **A2A panel** on each Nexus agent shows the Agent Card a caller sees, or why there is none (not published, or no A2A on that Nexus). | Authoring by hand, publishing YAML, or checking a card visually. |
 | **Astromesh SDD** | 0.1.0 | Spec-Driven Development skills for any coding agent. | — (not about agents at runtime). |
-| **Astromesh Leia** | 0.11.2 | This plugin. | — |
+| **Astromesh Leia** | 0.12.0 | This plugin. | — |
 
 ## Open-source libraries (standalone, any framework)
 
@@ -92,7 +96,7 @@ Do not design an agent that depends on Centinela without telling the user it is 
 
 | Component | Version | What it is |
 |---|---|---|
-| **astromesh-herald** | 0.14.0 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. 0.13.0 adds `GET /admin/stats/conversaciones` (admin token): new conversations per local day, hour and channel in an IANA `tz`, up to 62 days — the numbers behind an owner's dashboard. 0.14.0: a binding that runs an agent can also send every inbound message with attachments to `media_callback_url`, signed with `media_callback_secret` (`X-Herald-Signature-256`, same payload as a `callback_url` forward); Nexus still gets the message and the agent still answers. Not a manifest field: it lives in the Herald binding. |
+| **astromesh-herald** | 0.15.1 | Communications gateway: a person's message reaches a Nexus agent and the agent answers through the same outbox. Channels: WhatsApp, Instagram, Messenger (0.12.0; `pages_messaging` still in Meta App Review, so it is exercised through the emulator), Telegram, Web Chat, Email. 0.13.0 adds `GET /admin/stats/conversaciones` (admin token): new conversations per local day, hour and channel in an IANA `tz`, up to 62 days — the numbers behind an owner's dashboard. 0.14.0: a binding that runs an agent can also send every inbound message with attachments to `media_callback_url`, signed with `media_callback_secret` (`X-Herald-Signature-256`, same payload as a `callback_url` forward); Nexus still gets the message and the agent still answers. 0.15.0: the `callback_url` payload always carries `sender_phone` (the sender's verified phone, the value Nexus gets; `""` when the channel does not know it) and `contact_shared` (`true` only when that message is the sender sharing their own contact) — enough for one bot to serve many businesses, routed by phone. 0.15.1: mvp registers the Instagram adapter in emulated mode, so an Instagram inbox can be tested there with no real account. Not a manifest field: it lives in the Herald binding. |
 
 An agent that answers on WhatsApp through Herald is still a plain manifest: the channel is wired in
 Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).
@@ -111,6 +115,16 @@ Herald and Nexus, never in `spec` (see `schemas/whatsapp-config.md`).
 | Edit `type: a2a` tools and the A2A block in a form | Forge, Cortex | Forge 0.29.0+, Cortex 0.28.0+ |
 | See the published card from a desktop app | Cortex A2A panel | Cortex 0.29.0+ |
 | Another agent's turn must never confirm a write | `origen: "agente"` (sent by Nexus A2A and the ADK) | core 0.73.0+ |
+
+## Since 2026-11-04
+
+| Need | Use | Gate |
+|---|---|---|
+| An extra header to the model (gateway key, tenant id) | `headers` on an `openai_compat` block | core 0.75.0+ — **node only**; the Nexus pool runs 0.74.1 |
+| The same agent order on every node | Automatic | core 0.75.0+ |
+| Generate or edit an image, billed in credits | `POST /api/v1/images/generate` | Nexus 0.29.0+ (works from 0.29.1) |
+| The sender's phone in a forward | `sender_phone`, `contact_shared` | Herald 0.15.0+ |
+| See runs, charge and cost as they happen | Operator console, *En vivo* | Nexus 0.30.0+ |
 
 Not available yet: agent identity across organizations (PAP/Poppy) is in development in a
 separate product and is not part of Nexus or the core. Do not promise it.

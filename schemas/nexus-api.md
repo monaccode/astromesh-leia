@@ -2,7 +2,7 @@
 
 This document describes the astromesh-nexus control plane REST API. All agent lifecycle operations go through this API.
 
-> **Version:** This reference reflects **astromesh-nexus v0.28.2** (pool on astromesh core 0.74.1), re-derived from the router (`internal/server/server.go`), handlers and `docs/api-reference.md`. The REST plane is the one of 0.26.11 (`Blocked`/`Guardrail` persistence and the `timeout` status are 0.26.13+) plus the run-close rules of 0.27.0; the **A2A server** is 0.27.0–0.28.2. The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* and *A2A (Agent2Agent)* for what was added.
+> **Version:** This reference reflects **astromesh-nexus v0.31.1** (pool still on astromesh core 0.74.1), re-derived from the router (`internal/server/server.go`), handlers and `docs/api-reference.md`. The REST plane is the one of 0.26.11 (`Blocked`/`Guardrail` persistence and the `timeout` status are 0.26.13+) plus the run-close rules of 0.27.0; the **A2A server** is 0.27.0–0.28.2; **image generation** is 0.29.0–0.29.1; 0.30–0.31 only redesign the operator console (no API change). The sections up to *Agent Endpoints* date from v0.3.0 and still hold; see *Execution, Platform and Operator Endpoints (Nexus 0.26)* and *A2A (Agent2Agent)* for what was added.
 
 ## Base URL
 
@@ -1005,6 +1005,45 @@ Create/update bodies are YAML or JSON (the raw body is converted), up to 1 MiB; 
 | POST | `/api/v1/usage/events` | Report business-unit usage. Creating or changing a subscription is operator-only. |
 | POST | `/api/v1/messages/send` | Proactive send: `{channel, recipient, text, conversation_ref}`; `202 {message_id, status}`, `400` missing fields, `502` gateway error. |
 | POST | `/api/v1/runs/messages/send` | Same handler for the runtime, authenticated with a per-run token (not a tenant credential). |
+| POST | `/api/v1/images/generate` | **Nexus 0.29.0+.** Generate one image (below). |
+
+### Image generation: POST /api/v1/images/generate (Nexus 0.29.0+)
+
+A tenant route, with the tenant's API key or JWT. It is not an agent and not a manifest field: a
+product calls it directly (MUSA is the first one).
+
+```json
+{
+  "prompt": "…",                       // required, 1–8000 characters
+  "aspect_ratio": "1:1",               // required: "1:1" or "9:16"
+  "references": [{"mime": "image/png", "data": "<base64>"}],   // optional, ≤ 4, ≤ 6 MB together
+  "event_id": "post-123-v1",           // required: the idempotency key
+  "subscription_id": "…",              // optional: adds that subscription's credit cap
+  "unidad": "musa.imagen"              // optional, needs subscription_id: the business unit to record
+}
+```
+
+`200` returns `{image_id, mime, data (base64), credits_micros, unidad_registrada, motivo?, repetida}`
+— never the provider cost. `repetida: true` means the `event_id` had already produced this image.
+
+- Model: OpenAI `gpt-image-2.6-flare` at `medium` quality by default (operator settings
+  `NEXUS_IMAGE_MODEL`, `NEXUS_IMAGE_QUALITY`). `1:1` renders `1024x1024`, `9:16` renders `1152x2048`.
+  Without references it generates; with references it edits from them.
+- The key is the pool's `OPENAI_API_KEY`. Without it: `503`. Before 0.29.1 the route always
+  answered `503` (the OpenAI client was missing) — on an older Nexus, that is the cause.
+- **Idempotent per `event_id`:** a retry with the same id returns the same image and charges once;
+  two concurrent requests with the same id get `409`. Bytes are kept **7 days**, then `410`.
+- **Billed like a run:** cost from the provider's token `usage` at the tariff, added to the tenant's
+  usage, inside the **same credit caps as runs** — the tenant's, plus the subscription's when
+  `subscription_id` is sent (`402` with no room, and the provider is not called).
+- **The unit is the caller's:** with `unidad` + `subscription_id`, Nexus records that unit on the
+  subscription (MUSA sends `musa.imagen`). If it cannot (unit not in the plan, subscription not the
+  tenant's), the image is still returned with `unidad_registrada: false` and the reason in
+  `motivo`: billing trouble never blocks the image.
+- Other answers: `400` with the rule that failed (aspect, prompt length, more than 4 references,
+  missing `event_id`, `unidad` without `subscription_id`), `502` when the provider fails.
+
+Leia explains this route and its errors; it does not generate images itself.
 
 ### Operator plane: /api/v1/admin/*
 
@@ -1016,17 +1055,25 @@ header. Not reachable with a tenant API key. Routes: `POST|GET /tariffs`, `POST|
 `POST /billing-periods/:id/facturado`, `GET /billing-periods/overdue`. Leia does not automate these;
 it only explains a `402/422/429` by pointing the user to their operator.
 
+**Operator console (0.30.0+).** The web console at `/` reads like a till receipt: the home is **En
+vivo**, a tape of runs refreshed every 10 s (not real time), with credits charged (`cr`, black ink)
+and US$ cost (violet) side by side, costs under a dollar to four decimals, rejected runs struck
+through in red and unpriced runs in amber. Since 0.31.0 the Invocations explorer and each
+customer's detail use the same tape. When a user asks "where do I see what an agent cost", point the
+operator there; a tenant sees its own numbers through `/api/v1/usage`.
+
 ### Knowledge bundles on the pool
 
 The runtime pool (`deploy/components/runtime-pool/deployment.yaml`) mounts only `runtime.yaml`,
-no knowledge bundle directory (still true in Nexus 0.28.2). An agent that declares
+no knowledge bundle directory (still true in Nexus 0.31.1). An agent that declares
 `spec.knowledge.bundle` starts without it and logs a warning. Bundles work on standalone nodes.
 
 ### Runtime pool environment
 
 The pool's environment carries only the LLM provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 `MOONSHOT_API_KEY`, from the `astromesh-runtime-secrets` Secret) plus internal settings. A tenant
-cannot add variables. So any manifest field that names an env var (`api_key_env` of a model block
+cannot add variables. The pool runs **core 0.74.1** in Nexus 0.28.1–0.31.1: fields that need core
+0.75 (`headers` on a model block) are ignored there. So any manifest field that names an env var (`api_key_env` of a model block
 or of an `a2a` tool's `auth`) only resolves to one of those, or to something the operator added
 to that Secret for every tenant.
 
